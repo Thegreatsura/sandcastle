@@ -1,11 +1,13 @@
 import { Effect } from "effect";
-import { SandboxError, type SandboxService } from "./Sandbox.js";
+import { PromptError } from "./errors.js";
+import type { ExecError } from "./errors.js";
+import type { SandboxService } from "./Sandbox.js";
 
 export const preprocessPrompt = (
   prompt: string,
   sandbox: SandboxService,
   cwd: string,
-): Effect.Effect<string, SandboxError> => {
+): Effect.Effect<string, ExecError | PromptError> => {
   const pattern = /!`([^`]+)`/g;
   const matches = [...prompt.matchAll(pattern)];
 
@@ -22,10 +24,9 @@ export const preprocessPrompt = (
       const execResult = yield* sandbox.exec(command, { cwd });
       if (execResult.exitCode !== 0) {
         return yield* Effect.fail(
-          new SandboxError(
-            "preprocessPrompt",
-            `Command \`${command}\` exited with code ${execResult.exitCode}: ${execResult.stderr}`,
-          ),
+          new PromptError({
+            message: `Command \`${command}\` exited with code ${execResult.exitCode}: ${execResult.stderr}`,
+          }),
         );
       }
       result =

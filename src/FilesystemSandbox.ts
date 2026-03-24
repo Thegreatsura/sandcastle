@@ -3,7 +3,8 @@ import { execFile, spawn } from "node:child_process";
 import { copyFile, mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
-import { Sandbox, SandboxError, type SandboxService } from "./Sandbox.js";
+import { CopyError, ExecError } from "./errors.js";
+import { Sandbox, type SandboxService } from "./Sandbox.js";
 
 const makeFilesystemSandbox = (sandboxDir: string): SandboxService => ({
   exec: (command, options) =>
@@ -16,7 +17,10 @@ const makeFilesystemSandbox = (sandboxDir: string): SandboxService => ({
           if (error && error.code === undefined) {
             resume(
               Effect.fail(
-                new SandboxError("exec", `Failed to exec: ${error.message}`),
+                new ExecError({
+                  command,
+                  message: `Failed to exec: ${error.message}`,
+                }),
               ),
             );
           } else {
@@ -56,10 +60,10 @@ const makeFilesystemSandbox = (sandboxDir: string): SandboxService => ({
       proc.on("error", (error) => {
         resume(
           Effect.fail(
-            new SandboxError(
-              "execStreaming",
-              `Failed to exec: ${error.message}`,
-            ),
+            new ExecError({
+              command,
+              message: `Failed to exec: ${error.message}`,
+            }),
           ),
         );
       });
@@ -82,10 +86,9 @@ const makeFilesystemSandbox = (sandboxDir: string): SandboxService => ({
         await copyFile(hostPath, sandboxPath);
       },
       catch: (error) =>
-        new SandboxError(
-          "copyIn",
-          `Failed to copy ${hostPath} -> ${sandboxPath}: ${error}`,
-        ),
+        new CopyError({
+          message: `Failed to copy ${hostPath} -> ${sandboxPath}: ${error}`,
+        }),
     }),
 
   copyOut: (sandboxPath, hostPath) =>
@@ -95,10 +98,9 @@ const makeFilesystemSandbox = (sandboxDir: string): SandboxService => ({
         await copyFile(sandboxPath, hostPath);
       },
       catch: (error) =>
-        new SandboxError(
-          "copyOut",
-          `Failed to copy ${sandboxPath} -> ${hostPath}: ${error}`,
-        ),
+        new CopyError({
+          message: `Failed to copy ${sandboxPath} -> ${hostPath}: ${error}`,
+        }),
     }),
 });
 

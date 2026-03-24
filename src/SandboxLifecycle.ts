@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { SandcastleConfig } from "./Config.js";
-import { Sandbox, SandboxError, type SandboxService } from "./Sandbox.js";
+import type { SandboxError } from "./errors.js";
+import { Sandbox, type SandboxService } from "./Sandbox.js";
 import { execOk, runHooks, syncIn, syncOut } from "./SyncService.js";
 
 export interface SandboxLifecycleOptions {

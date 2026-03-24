@@ -3,7 +3,8 @@ import { execFile, spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { createInterface } from "node:readline";
-import { Sandbox, SandboxError, type SandboxService } from "./Sandbox.js";
+import { CopyError, ExecError } from "./errors.js";
+import { Sandbox, type SandboxService } from "./Sandbox.js";
 
 const makeDockerSandbox = (containerName: string): SandboxService => ({
   exec: (command, options) =>
@@ -22,10 +23,10 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
           if (error && error.code === undefined) {
             resume(
               Effect.fail(
-                new SandboxError(
-                  "exec",
-                  `docker exec failed: ${error.message}`,
-                ),
+                new ExecError({
+                  command,
+                  message: `docker exec failed: ${error.message}`,
+                }),
               ),
             );
           } else {
@@ -70,10 +71,10 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
       proc.on("error", (error) => {
         resume(
           Effect.fail(
-            new SandboxError(
-              "execStreaming",
-              `docker exec streaming failed: ${error.message}`,
-            ),
+            new ExecError({
+              command,
+              message: `docker exec streaming failed: ${error.message}`,
+            }),
           ),
         );
       });
@@ -93,7 +94,7 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
     Effect.gen(function* () {
       // Ensure parent directory exists in container
       const parentDir = dirname(sandboxPath);
-      yield* Effect.async<void, SandboxError>((resume) => {
+      yield* Effect.async<void, CopyError>((resume) => {
         execFile(
           "docker",
           ["exec", containerName, "mkdir", "-p", parentDir],
@@ -101,10 +102,9 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
             if (error) {
               resume(
                 Effect.fail(
-                  new SandboxError(
-                    "copyIn",
-                    `Failed to create dir ${parentDir}: ${error.message}`,
-                  ),
+                  new CopyError({
+                    message: `Failed to create dir ${parentDir}: ${error.message}`,
+                  }),
                 ),
               );
             } else {
@@ -115,7 +115,7 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
       });
 
       // docker cp hostPath containerName:sandboxPath
-      yield* Effect.async<void, SandboxError>((resume) => {
+      yield* Effect.async<void, CopyError>((resume) => {
         execFile(
           "docker",
           ["cp", hostPath, `${containerName}:${sandboxPath}`],
@@ -123,10 +123,9 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
             if (error) {
               resume(
                 Effect.fail(
-                  new SandboxError(
-                    "copyIn",
-                    `Failed to copy ${hostPath} -> ${containerName}:${sandboxPath}: ${error.message}`,
-                  ),
+                  new CopyError({
+                    message: `Failed to copy ${hostPath} -> ${containerName}:${sandboxPath}: ${error.message}`,
+                  }),
                 ),
               );
             } else {
@@ -143,14 +142,13 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
       yield* Effect.tryPromise({
         try: () => mkdir(dirname(hostPath), { recursive: true }),
         catch: (error) =>
-          new SandboxError(
-            "copyOut",
-            `Failed to create host dir ${dirname(hostPath)}: ${error}`,
-          ),
+          new CopyError({
+            message: `Failed to create host dir ${dirname(hostPath)}: ${error}`,
+          }),
       });
 
       // docker cp containerName:sandboxPath hostPath
-      yield* Effect.async<void, SandboxError>((resume) => {
+      yield* Effect.async<void, CopyError>((resume) => {
         execFile(
           "docker",
           ["cp", `${containerName}:${sandboxPath}`, hostPath],
@@ -158,10 +156,9 @@ const makeDockerSandbox = (containerName: string): SandboxService => ({
             if (error) {
               resume(
                 Effect.fail(
-                  new SandboxError(
-                    "copyOut",
-                    `Failed to copy ${containerName}:${sandboxPath} -> ${hostPath}: ${error.message}`,
-                  ),
+                  new CopyError({
+                    message: `Failed to copy ${containerName}:${sandboxPath} -> ${hostPath}: ${error.message}`,
+                  }),
                 ),
               );
             } else {

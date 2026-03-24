@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolvePrompt } from "./PromptResolver.js";
-import { SandboxError } from "./Sandbox.js";
+import { PromptError } from "./errors.js";
 
 describe("PromptResolver", () => {
   it("returns inline prompt when prompt is provided", async () => {
@@ -31,7 +31,7 @@ describe("PromptResolver", () => {
         Effect.flip,
       ),
     );
-    expect(error).toBeInstanceOf(SandboxError);
+    expect(error).toBeInstanceOf(PromptError);
     expect(error.message).toContain("both");
   });
 
@@ -56,7 +56,7 @@ describe("PromptResolver", () => {
     const error = await Effect.runPromise(
       resolvePrompt({ cwd: dir }).pipe(Effect.flip),
     );
-    expect(error).toBeInstanceOf(SandboxError);
+    expect(error).toBeInstanceOf(PromptError);
     expect(error.message).toContain("prompt");
   });
 });

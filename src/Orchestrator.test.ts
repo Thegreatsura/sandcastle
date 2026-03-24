@@ -14,7 +14,8 @@ import {
   parseStreamJsonLine,
   type OrchestrateOptions,
 } from "./Orchestrator.js";
-import { Sandbox, SandboxError } from "./Sandbox.js";
+import { Sandbox } from "./Sandbox.js";
+import type { DockerError, SandboxError } from "./errors.js";
 import { SandboxFactory } from "./SandboxFactory.js";
 
 const execAsync = promisify(exec);
@@ -73,7 +74,7 @@ const makeTestSandboxFactory = (
   const factoryLayer = Layer.succeed(SandboxFactory, {
     withSandbox: <A, E, R>(
       effect: Effect.Effect<A, E, R | Sandbox>,
-    ): Effect.Effect<A, E | SandboxError, Exclude<R, Sandbox>> =>
+    ): Effect.Effect<A, E | DockerError, Exclude<R, Sandbox>> =>
       Effect.acquireUseRelease(
         // Acquire: create fresh sandbox dir (removing any previous state)
         Effect.promise(async () => {
@@ -85,7 +86,7 @@ const makeTestSandboxFactory = (
         (dir) =>
           effect.pipe(Effect.provide(buildLayer(dir))) as Effect.Effect<
             A,
-            E | SandboxError,
+            E | DockerError,
             Exclude<R, Sandbox>
           >,
         // Release: clean up sandbox dir

@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import { execFile } from "node:child_process";
 import { resolve } from "node:path";
-import { SandboxError } from "./Sandbox.js";
+import { DockerError } from "./errors.js";
 
-const dockerExec = (args: string[]): Effect.Effect<string, SandboxError> =>
+const dockerExec = (args: string[]): Effect.Effect<string, DockerError> =>
   Effect.async((resume) => {
     execFile(
       "docker",
@@ -13,10 +13,9 @@ const dockerExec = (args: string[]): Effect.Effect<string, SandboxError> =>
         if (error) {
           resume(
             Effect.fail(
-              new SandboxError(
-                "docker",
-                `docker ${args[0]} failed: ${stderr?.toString() || error.message}`,
-              ),
+              new DockerError({
+                message: `docker ${args[0]} failed: ${stderr?.toString() || error.message}`,
+              }),
             ),
           );
         } else {
@@ -32,7 +31,7 @@ const dockerExec = (args: string[]): Effect.Effect<string, SandboxError> =>
 export const buildImage = (
   imageName: string,
   dockerfileDir: string,
-): Effect.Effect<void, SandboxError> =>
+): Effect.Effect<void, DockerError> =>
   Effect.gen(function* () {
     yield* dockerExec(["build", "-t", imageName, resolve(dockerfileDir)]);
   });
@@ -45,7 +44,7 @@ export const startContainer = (
   imageName: string,
   oauthToken: string,
   ghToken: string,
-): Effect.Effect<void, SandboxError> =>
+): Effect.Effect<void, DockerError> =>
   Effect.gen(function* () {
     // Check if container already exists
     const existing = yield* dockerExec([
@@ -59,10 +58,9 @@ export const startContainer = (
 
     if (existing.trim() === containerName) {
       yield* Effect.fail(
-        new SandboxError(
-          "startContainer",
-          `Container '${containerName}' already exists. Run cleanup first.`,
-        ),
+        new DockerError({
+          message: `Container '${containerName}' already exists. Run cleanup first.`,
+        }),
       );
     }
 
@@ -84,7 +82,7 @@ export const startContainer = (
  */
 export const removeContainer = (
   containerName: string,
-): Effect.Effect<void, SandboxError> =>
+): Effect.Effect<void, DockerError> =>
   Effect.gen(function* () {
     // Stop container (ignore errors if already stopped)
     yield* Effect.ignore(dockerExec(["stop", containerName]));
@@ -98,7 +96,7 @@ export const removeContainer = (
 export const cleanupContainer = (
   containerName: string,
   imageName: string,
-): Effect.Effect<void, SandboxError> =>
+): Effect.Effect<void, DockerError> =>
   Effect.gen(function* () {
     // Stop container (ignore errors if already stopped)
     yield* Effect.ignore(dockerExec(["stop", containerName]));

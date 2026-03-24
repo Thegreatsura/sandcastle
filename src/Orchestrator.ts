@@ -1,7 +1,9 @@
 import { Console, Effect } from "effect";
 import type { SandcastleConfig } from "./Config.js";
 import { preprocessPrompt } from "./PromptPreprocessor.js";
-import { SandboxError, type SandboxService } from "./Sandbox.js";
+import { AgentError } from "./errors.js";
+import type { SandboxError } from "./errors.js";
+import type { SandboxService } from "./Sandbox.js";
 import { SandboxFactory } from "./SandboxFactory.js";
 import { withSandboxLifecycle } from "./SandboxLifecycle.js";
 
@@ -101,10 +103,9 @@ const invokeAgent = (
 
     if (execResult.exitCode !== 0) {
       return yield* Effect.fail(
-        new SandboxError(
-          "invokeAgent",
-          `Claude exited with code ${execResult.exitCode}:\n${execResult.stderr}`,
-        ),
+        new AgentError({
+          message: `Claude exited with code ${execResult.exitCode}:\n${execResult.stderr}`,
+        }),
       );
     }
 

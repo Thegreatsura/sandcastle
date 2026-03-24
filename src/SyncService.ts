@@ -5,18 +5,19 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { type FailedStep, buildRecoveryMessage } from "./RecoveryMessage.js";
 import type { HookDefinition } from "./Config.js";
+import { ExecError, ExecHostError, SyncError } from "./errors.js";
 import {
   type ExecResult,
   Sandbox,
-  SandboxError,
+  type SandboxError,
   type SandboxService,
 } from "./Sandbox.js";
 
 const execHost = (
   command: string,
   cwd: string,
-): Effect.Effect<string, SandboxError> =>
-  Effect.async<string, SandboxError>((resume) => {
+): Effect.Effect<string, ExecHostError> =>
+  Effect.async<string, ExecHostError>((resume) => {
     execFile(
       "sh",
       ["-c", command],
@@ -25,10 +26,10 @@ const execHost = (
         if (error) {
           resume(
             Effect.fail(
-              new SandboxError(
-                "execHost",
-                `${command}: ${stderr?.toString() || error.message}`,
-              ),
+              new ExecHostError({
+                command,
+                message: `${command}: ${stderr?.toString() || error.message}`,
+              }),
             ),
           );
         } else {
@@ -42,14 +43,14 @@ export const execOk = (
   sandbox: SandboxService,
   command: string,
   options?: { cwd?: string },
-): Effect.Effect<ExecResult, SandboxError> =>
+): Effect.Effect<ExecResult, ExecError> =>
   Effect.flatMap(sandbox.exec(command, options), (result) =>
     result.exitCode !== 0
       ? Effect.fail(
-          new SandboxError(
-            "exec",
-            `Command failed (exit ${result.exitCode}): ${command}\n${result.stderr}`,
-          ),
+          new ExecError({
+            command,
+            message: `Command failed (exit ${result.exitCode}): ${command}\n${result.stderr}`,
+          }),
         )
       : Effect.succeed(result),
   );
@@ -57,7 +58,7 @@ export const execOk = (
 export const runHooks = (
   hooks: readonly HookDefinition[] | undefined,
   options?: { cwd?: string },
-): Effect.Effect<void, SandboxError, Sandbox> =>
+): Effect.Effect<void, ExecError, Sandbox> =>
   Effect.gen(function* () {
     if (!hooks || hooks.length === 0) return;
     const sandbox = yield* Sandbox;
@@ -229,10 +230,9 @@ export const syncIn = (
 
     if (expectedHead !== sandboxHead) {
       yield* Effect.fail(
-        new SandboxError(
-          "syncIn",
-          `HEAD mismatch after sync: host=${expectedHead} sandbox=${sandboxHead}`,
-        ),
+        new SyncError({
+          message: `HEAD mismatch after sync: host=${expectedHead} sandbox=${sandboxHead}`,
+        }),
       );
     }
 
@@ -502,7 +502,7 @@ const syncOutDirect = (
             })
           : "";
         const errorMsg = error.message + (recovery ? `\n\n${recovery}` : "");
-        return Effect.fail(new SandboxError(error.operation, errorMsg));
+        return Effect.fail(new SyncError({ message: errorMsg }));
       },
     });
   });
@@ -511,7 +511,7 @@ const syncOutDirect = (
 const createWipCommit = (
   sandbox: SandboxService,
   sandboxRepoDir: string,
-): Effect.Effect<boolean, SandboxError> =>
+): Effect.Effect<boolean, ExecError> =>
   Effect.gen(function* () {
     // Check for uncommitted changes (staged + unstaged)
     const diffCheck = yield* sandbox.exec("git diff HEAD --quiet", {
@@ -714,7 +714,7 @@ const syncOutViaWorktree = (
             branch: targetBranch,
           });
           const errorMsg = error.message + `\n\n${recovery}`;
-          yield* Effect.fail(new SandboxError(error.operation, errorMsg));
+          yield* Effect.fail(new SyncError({ message: errorMsg }));
         }),
     });
   });

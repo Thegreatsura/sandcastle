@@ -14,7 +14,7 @@ import {
 } from "./DockerLifecycle.js";
 import { scaffold } from "./InitService.js";
 import { run } from "./run.js";
-import { SandboxError } from "./Sandbox.js";
+import { AgentError, ConfigDirError, InitError } from "./errors.js";
 import { DockerSandboxFactory, SandboxFactory } from "./SandboxFactory.js";
 import { withSandboxLifecycle } from "./SandboxLifecycle.js";
 import { syncIn, syncOut } from "./SyncService.js";
@@ -51,14 +51,13 @@ const imageNameOption = Options.text("image-name").pipe(
 
 const CONFIG_DIR = ".sandcastle";
 
-const requireConfigDir = (cwd: string): Effect.Effect<void, SandboxError> =>
+const requireConfigDir = (cwd: string): Effect.Effect<void, ConfigDirError> =>
   Effect.tryPromise({
     try: () => access(join(cwd, CONFIG_DIR)),
     catch: () =>
-      new SandboxError(
-        "configDir",
-        "No .sandcastle/ found. Run `sandcastle init` first.",
-      ),
+      new ConfigDirError({
+        message: "No .sandcastle/ found. Run `sandcastle init` first.",
+      }),
   });
 
 // --- Init command ---
@@ -77,7 +76,9 @@ const initCommand = Command.make(
       yield* Effect.tryPromise({
         try: () => scaffold(cwd),
         catch: (e) =>
-          new SandboxError("init", `${e instanceof Error ? e.message : e}`),
+          new InitError({
+            message: `${e instanceof Error ? e.message : e}`,
+          }),
       });
       yield* Console.log("Config directory created.");
 
@@ -85,7 +86,9 @@ const initCommand = Command.make(
       const tokens = yield* Effect.tryPromise({
         try: () => resolveTokens(cwd),
         catch: (e) =>
-          new SandboxError("init", `${e instanceof Error ? e.message : e}`),
+          new InitError({
+            message: `${e instanceof Error ? e.message : e}`,
+          }),
       });
 
       // Build image from .sandcastle/ directory
@@ -123,10 +126,9 @@ const setupSandboxCommand = Command.make(
       const tokens = yield* Effect.tryPromise({
         try: () => resolveTokens(cwd),
         catch: (e) =>
-          new SandboxError(
-            "setup-sandbox",
-            `${e instanceof Error ? e.message : e}`,
-          ),
+          new InitError({
+            message: `${e instanceof Error ? e.message : e}`,
+          }),
       });
 
       const dockerfileDir = join(cwd, CONFIG_DIR);
@@ -308,7 +310,9 @@ const runCommand = Command.make(
             _imageName: imageName,
           }),
         catch: (e) =>
-          new SandboxError("run", `${e instanceof Error ? e.message : e}`),
+          new AgentError({
+            message: `${e instanceof Error ? e.message : e}`,
+          }),
       });
 
       if (result.complete) {
@@ -330,7 +334,7 @@ const interactiveSession = (options: {
   sandboxRepoDir: string;
   config: import("./Config.js").SandcastleConfig;
   model?: string;
-}): Effect.Effect<void, SandboxError, SandboxFactory> =>
+}): Effect.Effect<void, import("./errors.js").SandboxError, SandboxFactory> =>
   Effect.gen(function* () {
     const { hostRepoDir, sandboxRepoDir, config } = options;
     const resolvedModel = options.model ?? config.model ?? DEFAULT_MODEL;
@@ -349,7 +353,7 @@ const interactiveSession = (options: {
             yield* Console.log("Launching interactive Claude session...");
             yield* Console.log("");
 
-            const exitCode = yield* Effect.async<number, SandboxError>(
+            const exitCode = yield* Effect.async<number, AgentError>(
               (resume) => {
                 const proc = spawn(
                   "docker",
@@ -370,10 +374,9 @@ const interactiveSession = (options: {
                 proc.on("error", (error) => {
                   resume(
                     Effect.fail(
-                      new SandboxError(
-                        "interactive",
-                        `Failed to launch Claude: ${error.message}`,
-                      ),
+                      new AgentError({
+                        message: `Failed to launch Claude: ${error.message}`,
+                      }),
                     ),
                   );
                 });
@@ -411,10 +414,9 @@ const interactiveCommand = Command.make(
       const tokens = yield* Effect.tryPromise({
         try: () => resolveTokens(hostRepoDir),
         catch: (e) =>
-          new SandboxError(
-            "interactive",
-            `${e instanceof Error ? e.message : e}`,
-          ),
+          new InitError({
+            message: `${e instanceof Error ? e.message : e}`,
+          }),
       });
 
       const config = yield* readConfig(hostRepoDir);

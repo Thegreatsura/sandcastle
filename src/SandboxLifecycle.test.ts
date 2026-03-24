@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { FilesystemSandbox } from "./FilesystemSandbox.js";
-import { SandboxError } from "./Sandbox.js";
+import { ExecError } from "./errors.js";
 import { withSandboxLifecycle } from "./SandboxLifecycle.js";
 
 const execAsync = promisify(exec);
@@ -205,7 +205,9 @@ describe("withSandboxLifecycle", () => {
     await expect(
       Effect.runPromise(
         withSandboxLifecycle({ hostRepoDir: hostDir, sandboxRepoDir }, () =>
-          Effect.fail(new SandboxError("test", "callback failed")),
+          Effect.fail(
+            new ExecError({ command: "test", message: "callback failed" }),
+          ),
         ).pipe(Effect.provide(layer)),
       ),
     ).rejects.toThrow("callback failed");

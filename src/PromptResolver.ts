@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { SandboxError } from "./Sandbox.js";
+import { PromptError } from "./errors.js";
 
 export interface ResolvePromptOptions {
   readonly prompt?: string;
@@ -11,15 +11,14 @@ export interface ResolvePromptOptions {
 
 export const resolvePrompt = (
   options: ResolvePromptOptions,
-): Effect.Effect<string, SandboxError> => {
+): Effect.Effect<string, PromptError> => {
   const { prompt, promptFile, cwd = process.cwd() } = options;
 
   if (prompt !== undefined && promptFile !== undefined) {
     return Effect.fail(
-      new SandboxError(
-        "resolvePrompt",
-        "Cannot provide both --prompt and --prompt-file",
-      ),
+      new PromptError({
+        message: "Cannot provide both --prompt and --prompt-file",
+      }),
     );
   }
 
@@ -32,9 +31,8 @@ export const resolvePrompt = (
   return Effect.tryPromise({
     try: () => readFile(path, "utf-8"),
     catch: (e) =>
-      new SandboxError(
-        "resolvePrompt",
-        `Failed to read prompt from ${path}: ${e}`,
-      ),
+      new PromptError({
+        message: `Failed to read prompt from ${path}: ${e}`,
+      }),
   });
 };

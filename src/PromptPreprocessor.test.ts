@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FilesystemSandbox } from "./FilesystemSandbox.js";
 import { preprocessPrompt } from "./PromptPreprocessor.js";
-import { Sandbox, SandboxError } from "./Sandbox.js";
+import { Sandbox } from "./Sandbox.js";
+import { PromptError } from "./errors.js";
 
 describe("PromptPreprocessor", () => {
   const setup = async () => {
@@ -57,8 +58,8 @@ describe("PromptPreprocessor", () => {
         Effect.flip,
       ),
     );
-    expect(result).toBeInstanceOf(SandboxError);
-    expect(result.operation).toBe("preprocessPrompt");
+    expect(result).toBeInstanceOf(PromptError);
+    expect(result._tag).toBe("PromptError");
     expect(result.message).toContain("exit 1");
     expect(result.message).toContain("exited with code 1");
   });
