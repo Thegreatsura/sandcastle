@@ -606,7 +606,7 @@ describe("withSandboxLifecycle (worktree mode — skipSync: true)", () => {
     expect(stdout.trim()).toBe("");
   });
 
-  it("preserves temp branch and throws on cherry-pick failure", async () => {
+  it("preserves temp branch and throws on fast-forward failure", async () => {
     const { hostDir, worktreeDir, layer } = await setupWorktree();
 
     await expect(
@@ -640,7 +640,7 @@ describe("withSandboxLifecycle (worktree mode — skipSync: true)", () => {
             }),
         ).pipe(Effect.provide(Layer.merge(layer, testDisplayLayer))),
       ),
-    ).rejects.toThrow(/cherry-pick/i);
+    ).rejects.toThrow(/fast-forward merge/i);
 
     // Temp branch should still exist for recovery
     const { stdout } = await execAsync('git branch --list "sandcastle/test"', {
@@ -744,6 +744,63 @@ describe("withSandboxLifecycle (worktree mode — skipSync: true)", () => {
     expect(log).toContain("feature commit");
 
     // Should report the cherry-picked (non-merge) commit
+    expect(result.commits.length).toBeGreaterThanOrEqual(1);
+    expect(result.branch).toBe("main");
+  });
+
+  it("merging multiple independent branches on temp branch lands all changes on host", async () => {
+    // Reproduces the parallel planner bug: the merge agent works on a temp branch,
+    // merges N branches that each independently modified files from the same main base.
+    // git rev-list --no-merges walks into the merged branches and collects all original
+    // commits, then cherry-picking them sequentially onto main fails because they
+    // touch overlapping files from the same base.
+    const { hostDir, worktreeDir, layer } = await setupWorktree();
+
+    const result = await Effect.runPromise(
+      withSandboxLifecycle(
+        {
+          hostRepoDir: hostDir,
+          sandboxRepoDir: worktreeDir,
+          skipSync: true,
+        },
+        (ctx) =>
+          Effect.gen(function* () {
+            yield* ctx.sandbox.exec('git config user.email "test@test.com"', {
+              cwd: ctx.sandboxRepoDir,
+            });
+            yield* ctx.sandbox.exec('git config user.name "Test"', {
+              cwd: ctx.sandboxRepoDir,
+            });
+
+            // Create two independent branches from main, each modifying the shared file
+            yield* ctx.sandbox.exec(
+              'sh -c "git checkout -b branch-a main && echo line-a >> file.txt && git add file.txt && git commit -m \\"branch-a change\\""',
+              { cwd: ctx.sandboxRepoDir },
+            );
+            yield* ctx.sandbox.exec(
+              'sh -c "git checkout -b branch-b main && echo line-b >> file.txt && git add file.txt && git commit -m \\"branch-b change\\""',
+              { cwd: ctx.sandboxRepoDir },
+            );
+
+            // Back to temp branch — merge both (resolving the conflict on file.txt)
+            yield* ctx.sandbox.exec(
+              'sh -c "git checkout sandcastle/test && git merge --no-ff branch-a -m \\"Merge branch-a\\""',
+              { cwd: ctx.sandboxRepoDir },
+            );
+            // branch-b will conflict on file.txt — resolve it manually
+            yield* ctx.sandbox.exec(
+              `sh -c "git merge --no-ff branch-b -m \\"Merge branch-b\\" || (printf 'original\\nline-a\\nline-b\\n' > file.txt && git add file.txt && git commit --no-edit -m \\"Merge branch-b\\")"`,
+              { cwd: ctx.sandboxRepoDir },
+            );
+          }),
+      ).pipe(Effect.provide(Layer.merge(layer, testDisplayLayer))),
+    );
+
+    // Both changes should be on the host's main branch
+    const content = await readFile(join(hostDir, "file.txt"), "utf-8");
+    expect(content).toContain("line-a");
+    expect(content).toContain("line-b");
+
     expect(result.commits.length).toBeGreaterThanOrEqual(1);
     expect(result.branch).toBe("main");
   });

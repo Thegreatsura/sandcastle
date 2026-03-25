@@ -164,42 +164,41 @@ export const withSandboxLifecycle = <A>(
     const hostSideWorktreePath = hostWorktreePath ?? sandboxRepoDir;
 
     if (hostCurrentBranch !== null) {
-      // Temp branch mode: collect worktree commits, detach, cherry-pick, delete branch
+      // Temp branch mode: fast-forward host branch to temp branch, then delete temp branch.
+      // We use fast-forward instead of cherry-pick because cherry-pick breaks when the
+      // temp branch contains merge commits (e.g. a merge agent merging multiple parallel
+      // branches). The temp branch is always a direct descendant of hostCurrentBranch,
+      // so fast-forward is always valid.
 
-      // Collect SHAs from the temp branch (since baseHead)
-      const tempShas = yield* Effect.promise(async () => {
+      // Check if there are any new commits on the temp branch
+      const hasNewCommits = yield* Effect.promise(async () => {
         try {
           const { stdout } = await execAsync(
-            `git rev-list "${baseHead}..HEAD" --reverse --no-merges`,
+            `git rev-list "${baseHead}..HEAD" --count`,
             { cwd: hostSideWorktreePath },
           );
-          const lines = stdout.trim();
-          if (!lines) return [];
-          return lines.split("\n");
+          return parseInt(stdout.trim(), 10) > 0;
         } catch {
-          return [] as string[];
+          return false;
         }
       });
 
       // Detach the worktree from the temp branch so the branch can be deleted
       yield* execOk(sandbox, "git checkout --detach", { cwd: sandboxRepoDir });
 
-      if (tempShas.length > 0) {
-        // Cherry-pick commits onto host's current branch
+      if (hasNewCommits) {
+        // Fast-forward host's current branch to the temp branch
         yield* Effect.tryPromise({
           try: async () => {
             try {
-              await execAsync(`git cherry-pick ${tempShas.join(" ")}`, {
+              await execAsync(`git merge --ff-only "${resolvedBranch}"`, {
                 cwd: hostRepoDir,
               });
             } catch {
-              await execAsync("git cherry-pick --abort", {
-                cwd: hostRepoDir,
-              }).catch(() => {});
               throw new Error(
-                `Cherry-pick of ${tempShas.length} commit(s) onto '${hostCurrentBranch}' failed. ` +
+                `Fast-forward merge of '${resolvedBranch}' onto '${hostCurrentBranch}' failed. ` +
                   `The temporary branch '${resolvedBranch}' has been preserved. ` +
-                  `To retry: git cherry-pick ${tempShas.join(" ")}, ` +
+                  `To retry: git merge --ff-only ${resolvedBranch}, ` +
                   `then clean up: git branch -D ${resolvedBranch}`,
               );
             }
@@ -211,14 +210,14 @@ export const withSandboxLifecycle = <A>(
         });
       }
 
-      // Force-delete the temp branch (cherry-picked commits have new SHAs on host)
+      // Delete the temp branch (now merged into host branch)
       yield* Effect.promise(() =>
         execAsync(`git branch -D "${resolvedBranch}"`, {
           cwd: hostRepoDir,
         }).catch(() => {}),
       );
 
-      // Collect the cherry-picked commits now on the host branch
+      // Collect the commits now on the host branch
       commits = yield* Effect.promise(async () => {
         try {
           const { stdout } = await execAsync(
