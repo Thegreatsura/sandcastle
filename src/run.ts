@@ -9,6 +9,10 @@ import { orchestrate } from "./Orchestrator.js";
 import { resolvePrompt } from "./PromptResolver.js";
 import { DockerSandboxFactory, SandboxConfig } from "./SandboxFactory.js";
 import { resolveEnv } from "./EnvResolver.js";
+import {
+  type PromptArgs,
+  substitutePromptArgs,
+} from "./PromptArgumentSubstitution.js";
 
 export type LoggingOption =
   | { readonly type: "file"; readonly path: string }
@@ -34,6 +38,8 @@ export interface RunOptions {
   readonly agent?: string;
   /** Docker image name to use for the sandbox (default: sandcastle:local) */
   readonly imageName?: string;
+  /** Key-value map for {{KEY}} placeholder substitution in prompts */
+  readonly promptArgs?: PromptArgs;
   /** Logging mode (default: { type: 'file' } with auto-generated path under .sandcastle/logs/) */
   readonly logging?: LoggingOption;
 }
@@ -64,7 +70,7 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
   const sandboxRepoDir = `${SANDBOX_REPOS_DIR}/${repoName}`;
 
   // Resolve prompt
-  const resolvedPrompt = await Effect.runPromise(
+  const rawPrompt = await Effect.runPromise(
     resolvePrompt({ prompt, promptFile, cwd: hostRepoDir }),
   );
 
@@ -125,6 +131,11 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
       if (branch) rows["Branch"] = branch;
       if (resolvedModel) rows["Model"] = resolvedModel;
       yield* d.summary("Sandcastle Run", rows);
+
+      // Substitute prompt arguments ({{KEY}} placeholders) before orchestration
+      const resolvedPrompt = options.promptArgs
+        ? yield* substitutePromptArgs(rawPrompt, options.promptArgs)
+        : rawPrompt;
 
       return yield* orchestrate({
         hostRepoDir,
