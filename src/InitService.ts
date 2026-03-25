@@ -129,12 +129,6 @@ export const scaffold = (
         fs
           .writeFileString(join(configDir, ".gitignore"), GITIGNORE)
           .pipe(Effect.mapError((e) => new Error(e.message))),
-        fs
-          .writeFileString(
-            join(configDir, "config.json"),
-            JSON.stringify({ agent: provider.name }, null, 2) + "\n",
-          )
-          .pipe(Effect.mapError((e) => new Error(e.message))),
         copyTemplateFiles(templateDir, configDir),
       ],
       { concurrency: "unbounded" },

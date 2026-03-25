@@ -56,16 +56,14 @@ describe("InitService scaffold", () => {
     expect(dockerfile).toBe(fakeProvider.dockerfileTemplate);
   });
 
-  it("writes agent name to config.json", async () => {
+  it("does not scaffold config.json for blank template", async () => {
     const dir = await makeDir();
     await runScaffold(dir, fakeProvider);
 
-    const configJson = await readFile(
-      join(dir, ".sandcastle", "config.json"),
-      "utf-8",
-    );
-    const config = JSON.parse(configJson);
-    expect(config).toEqual({ agent: "fake-agent" });
+    const { access } = await import("node:fs/promises");
+    await expect(
+      access(join(dir, ".sandcastle", "config.json")),
+    ).rejects.toThrow();
   });
 
   it("scaffolds claude-code provider correctly", async () => {
@@ -80,9 +78,6 @@ describe("InitService scaffold", () => {
     const envExample = await readFile(join(configDir, ".env.example"), "utf-8");
     expect(envExample).toContain("CLAUDE_CODE_OAUTH_TOKEN=");
     expect(envExample).toContain("GH_TOKEN=");
-
-    const configJson = await readFile(join(configDir, "config.json"), "utf-8");
-    expect(JSON.parse(configJson)).toEqual({ agent: "claude-code" });
   });
 
   it("errors if .sandcastle/ already exists", async () => {
@@ -296,11 +291,6 @@ describe("InitService scaffold", () => {
 
     const envExample = await readFile(join(configDir, ".env.example"), "utf-8");
     expect(envExample).toContain("FAKE_TOKEN=");
-
-    const configJson = JSON.parse(
-      await readFile(join(configDir, "config.json"), "utf-8"),
-    );
-    expect(configJson).toEqual({ agent: "fake-agent" });
   });
 
   describe("parallel-planner template", () => {
@@ -385,11 +375,6 @@ describe("InitService scaffold", () => {
         "utf-8",
       );
       expect(envExample).toContain("FAKE_TOKEN=");
-
-      const configJson = JSON.parse(
-        await readFile(join(configDir, "config.json"), "utf-8"),
-      );
-      expect(configJson).toEqual({ agent: "fake-agent" });
     });
   });
 });
