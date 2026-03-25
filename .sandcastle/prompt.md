@@ -4,7 +4,7 @@ Here are the open issues in the repo:
 
 <issues-json>
 
-!`gh issue list --state open --json number,title,body,comments`
+!`gh issue list --state open --json number,title,body,comments --jq '[.[] | {number, title, body, comments: [.comments[].body]}]'`
 
 </issues-json>
 
