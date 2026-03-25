@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { scaffold } from "./InitService.js";
+import { scaffold, getNextStepsLines } from "./InitService.js";
 import type { AgentProvider } from "./AgentProvider.js";
 import { claudeCodeProvider } from "./AgentProvider.js";
 import { SANDBOX_WORKSPACE_DIR } from "./SandboxFactory.js";
@@ -56,16 +56,14 @@ describe("InitService scaffold", () => {
     expect(dockerfile).toBe(fakeProvider.dockerfileTemplate);
   });
 
-  it("writes agent name to config.json", async () => {
+  it("does not scaffold config.json for blank template", async () => {
     const dir = await makeDir();
     await runScaffold(dir, fakeProvider);
 
-    const configJson = await readFile(
-      join(dir, ".sandcastle", "config.json"),
-      "utf-8",
-    );
-    const config = JSON.parse(configJson);
-    expect(config).toEqual({ agent: "fake-agent" });
+    const { access } = await import("node:fs/promises");
+    await expect(
+      access(join(dir, ".sandcastle", "config.json")),
+    ).rejects.toThrow();
   });
 
   it("scaffolds claude-code provider correctly", async () => {
@@ -80,9 +78,6 @@ describe("InitService scaffold", () => {
     const envExample = await readFile(join(configDir, ".env.example"), "utf-8");
     expect(envExample).toContain("CLAUDE_CODE_OAUTH_TOKEN=");
     expect(envExample).toContain("GH_TOKEN=");
-
-    const configJson = await readFile(join(configDir, "config.json"), "utf-8");
-    expect(JSON.parse(configJson)).toEqual({ agent: "claude-code" });
   });
 
   it("errors if .sandcastle/ already exists", async () => {
@@ -279,6 +274,59 @@ describe("InitService scaffold", () => {
     });
   });
 
+  it("simple-loop template does not scaffold compiled .js or .d.ts files", async () => {
+    const dir = await makeDir();
+    await runScaffold(dir, fakeProvider, "simple-loop");
+
+    const { readdir } = await import("node:fs/promises");
+    const files = await readdir(join(dir, ".sandcastle"));
+    const compiledFiles = files.filter(
+      (f) =>
+        f.endsWith(".js") ||
+        f.endsWith(".d.ts") ||
+        f.endsWith(".js.map") ||
+        f.endsWith(".d.ts.map"),
+    );
+    expect(compiledFiles).toEqual([]);
+  });
+
+  describe("getNextStepsLines", () => {
+    it("blank template returns steps mentioning .env and npx sandcastle run", () => {
+      const lines = getNextStepsLines("blank");
+      expect(lines.length).toBeGreaterThanOrEqual(2);
+      const joined = lines.join("\n");
+      expect(joined).toContain(".sandcastle/.env");
+      expect(joined).toContain("npx sandcastle run");
+    });
+
+    it("non-blank template returns steps mentioning .env, package.json scripts, and npm run sandcastle", () => {
+      const lines = getNextStepsLines("simple-loop");
+      const joined = lines.join("\n");
+      expect(joined).toContain(".sandcastle/.env");
+      expect(joined).toContain("package.json");
+      expect(joined).toContain("npm run sandcastle");
+    });
+
+    it("non-blank template includes a note about customizing the install command", () => {
+      const lines = getNextStepsLines("simple-loop");
+      const joined = lines.join("\n");
+      expect(joined).toContain("npm install");
+      expect(joined).toContain("onSandboxReady");
+    });
+
+    it("returns at least 2 numbered steps for blank template", () => {
+      const lines = getNextStepsLines("blank");
+      const numberedSteps = lines.filter((l) => /^\d+\./.test(l));
+      expect(numberedSteps.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("returns at least 3 numbered steps for non-blank templates", () => {
+      const lines = getNextStepsLines("simple-loop");
+      const numberedSteps = lines.filter((l) => /^\d+\./.test(l));
+      expect(numberedSteps.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
   it("unknown template name throws a clear error", async () => {
     const dir = await makeDir();
     await expect(runScaffold(dir, fakeProvider, "nonexistent")).rejects.toThrow(
@@ -296,11 +344,6 @@ describe("InitService scaffold", () => {
 
     const envExample = await readFile(join(configDir, ".env.example"), "utf-8");
     expect(envExample).toContain("FAKE_TOKEN=");
-
-    const configJson = JSON.parse(
-      await readFile(join(configDir, "config.json"), "utf-8"),
-    );
-    expect(configJson).toEqual({ agent: "fake-agent" });
   });
 
   describe("parallel-planner template", () => {
@@ -385,11 +428,6 @@ describe("InitService scaffold", () => {
         "utf-8",
       );
       expect(envExample).toContain("FAKE_TOKEN=");
-
-      const configJson = JSON.parse(
-        await readFile(join(configDir, "config.json"), "utf-8"),
-      );
-      expect(configJson).toEqual({ agent: "fake-agent" });
     });
   });
 });

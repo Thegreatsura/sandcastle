@@ -38,6 +38,24 @@ const TEMPLATES: TemplateMetadata[] = [
 
 export const listTemplates = (): TemplateMetadata[] => TEMPLATES;
 
+export function getNextStepsLines(template: string): string[] {
+  if (template === "blank") {
+    return [
+      "Next steps:",
+      "1. Fill in .sandcastle/.env with your agent credentials",
+      "2. Run `npx sandcastle run` to start the agent",
+    ];
+  } else {
+    return [
+      "Next steps:",
+      "1. Fill in .sandcastle/.env with your agent credentials",
+      `2. Add "sandcastle": "npx tsx .sandcastle/main.ts" to your package.json scripts`,
+      "3. Customize the `npm install` command in the onSandboxReady hook if your project uses a different package manager",
+      "4. Run `npm run sandcastle` to start the agent",
+    ];
+  }
+}
+
 function buildEnvExample(envManifest: Record<string, string>): string {
   return (
     Object.entries(envManifest)
@@ -76,7 +94,14 @@ const copyTemplateFiles = (
       .pipe(Effect.mapError((e) => new Error(e.message)));
     yield* Effect.all(
       files
-        .filter((f) => f !== "template.json")
+        .filter(
+          (f) =>
+            f !== "template.json" &&
+            !f.endsWith(".js") &&
+            !f.endsWith(".js.map") &&
+            !f.endsWith(".d.ts") &&
+            !f.endsWith(".d.ts.map"),
+        )
         .map((f) =>
           fs
             .copyFile(join(templateDir, f), join(destDir, f))
@@ -128,12 +153,6 @@ export const scaffold = (
           .pipe(Effect.mapError((e) => new Error(e.message))),
         fs
           .writeFileString(join(configDir, ".gitignore"), GITIGNORE)
-          .pipe(Effect.mapError((e) => new Error(e.message))),
-        fs
-          .writeFileString(
-            join(configDir, "config.json"),
-            JSON.stringify({ agent: provider.name }, null, 2) + "\n",
-          )
           .pipe(Effect.mapError((e) => new Error(e.message))),
         copyTemplateFiles(templateDir, configDir),
       ],
