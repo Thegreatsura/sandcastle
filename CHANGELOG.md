@@ -1,5 +1,11 @@
 # @ai-hero/sandcastle
 
+## 0.1.2
+
+### Patch Changes
+
+- 3ece5cb: Removed unused `mkdir -p /home/agent/repos` from Dockerfile template. The workspace is bind-mounted at `/home/agent/workspace`, so this directory was never used.
+
 ## 0.1.1
 
 ### Patch Changes
