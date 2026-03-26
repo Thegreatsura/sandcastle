@@ -5,21 +5,41 @@
 import { Effect, Layer } from "effect";
 import { execFile, spawn } from "node:child_process";
 import { copyFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { CopyError, ExecError } from "./errors.js";
 import { type ExecResult, Sandbox } from "./SandboxFactory.js";
 
+/**
+ * Creates an isolated git global config env so that test sandbox
+ * `git config --global` writes don't corrupt the developer's real ~/.gitconfig.
+ */
+const createIsolatedGitEnv = (): Record<string, string> => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "test-gitconfig-"));
+  const globalConfigPath = join(tmpDir, ".gitconfig");
+  writeFileSync(globalConfigPath, "");
+  return { GIT_CONFIG_GLOBAL: globalConfigPath };
+};
+
 export const makeLocalSandboxLayer = (
   sandboxDir: string,
-): Layer.Layer<Sandbox> =>
-  Layer.succeed(Sandbox, {
+): Layer.Layer<Sandbox> => {
+  const gitEnv = createIsolatedGitEnv();
+  const env = { ...process.env, ...gitEnv };
+
+  return Layer.succeed(Sandbox, {
     exec: (command, options) =>
       Effect.async<ExecResult, ExecError>((resume) => {
         execFile(
           "sh",
           ["-c", command],
-          { cwd: options?.cwd ?? sandboxDir, maxBuffer: 10 * 1024 * 1024 },
+          {
+            cwd: options?.cwd ?? sandboxDir,
+            maxBuffer: 10 * 1024 * 1024,
+            env,
+          },
           (error, stdout, stderr) => {
             if (error && error.code === undefined) {
               resume(
@@ -51,6 +71,7 @@ export const makeLocalSandboxLayer = (
         const proc = spawn("sh", ["-c", command], {
           cwd: options?.cwd ?? sandboxDir,
           stdio: ["ignore", "pipe", "pipe"],
+          env,
         });
 
         const stdoutChunks: string[] = [];
@@ -112,3 +133,4 @@ export const makeLocalSandboxLayer = (
           }),
       }),
   });
+};
