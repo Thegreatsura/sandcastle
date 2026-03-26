@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import type { AgentProvider } from "./AgentProvider.js";
 
 const GITIGNORE = `.env
-patches/
 logs/
 worktrees/
 `;
