@@ -298,7 +298,7 @@ describe("WorktreeDockerSandboxFactory", () => {
         const factory = yield* SandboxFactory;
         yield* factory.withSandbox(() =>
           Effect.fail(
-            new TimeoutError({ message: "timed out", timeoutSeconds: 30 }),
+            new TimeoutError({ message: "timed out", idleTimeoutSeconds: 30 }),
           ),
         );
       }).pipe(Effect.provide(makeLayer())),

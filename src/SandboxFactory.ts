@@ -440,7 +440,7 @@ export const WorktreeDockerSandboxFactory = {
                 if (e instanceof TimeoutError) {
                   return new TimeoutError({
                     message: e.message,
-                    timeoutSeconds: e.timeoutSeconds,
+                    idleTimeoutSeconds: e.idleTimeoutSeconds,
                     preservedWorktreePath: path,
                   }) as unknown as E | DockerError | WorktreeError;
                 }
