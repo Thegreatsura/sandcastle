@@ -327,10 +327,10 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
       yield* validateNoBuiltInArgOverride(userArgs);
 
       // Build effective args: built-in args merged with user-provided args.
-      // In none mode, both SOURCE_BRANCH and TARGET_BRANCH resolve to the host's current branch.
+      // In none mode, resolvedBranch is already currentHostBranch, so
+      // SOURCE_BRANCH and TARGET_BRANCH both resolve to the host's current branch.
       const effectiveArgs = {
-        SOURCE_BRANCH:
-          worktreeMode.mode === "none" ? currentHostBranch : resolvedBranch,
+        SOURCE_BRANCH: resolvedBranch,
         TARGET_BRANCH: currentHostBranch,
         ...userArgs,
       };

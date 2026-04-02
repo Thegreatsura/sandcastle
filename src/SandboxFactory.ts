@@ -378,23 +378,20 @@ export const WorktreeDockerSandboxFactory = {
 
           if (isNoneMode) {
             // None mode: bind-mount host directory directly, no worktree
+            const gitDir = join(hostRepoDir, ".git");
+            const volumeMounts = [
+              `${hostRepoDir}:${SANDBOX_WORKSPACE_DIR}`,
+              `${gitDir}:${gitDir}`,
+            ];
             return Effect.acquireUseRelease(
-              // Acquire: start container with host dir bind-mounted
-              (() => {
-                const gitDir = join(hostRepoDir, ".git");
-                const volumeMounts = [
-                  `${hostRepoDir}:${SANDBOX_WORKSPACE_DIR}`,
-                  `${gitDir}:${gitDir}`,
-                ];
-                return startSandboxContainer(
-                  containerName,
-                  imageName,
-                  env,
-                  volumeMounts,
-                );
-              })(),
+              startSandboxContainer(
+                containerName,
+                imageName,
+                env,
+                volumeMounts,
+              ),
               // Use
-              ({}) =>
+              () =>
                 makeEffect({}).pipe(
                   Effect.provide(makeDockerSandboxLayer(containerName)),
                 ) as Effect.Effect<A, E | DockerError, Exclude<R, Sandbox>>,
