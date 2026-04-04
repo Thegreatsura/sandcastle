@@ -11,6 +11,15 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(),
 }));
 
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    statSync: vi.fn(actual.statSync),
+    readFileSync: vi.fn(actual.readFileSync),
+  };
+});
+
 vi.mock("./WorktreeManager.js", () => ({
   create: vi.fn(),
   remove: vi.fn(),
@@ -19,6 +28,7 @@ vi.mock("./WorktreeManager.js", () => ({
 }));
 
 import { execFile } from "node:child_process";
+import { statSync, readFileSync } from "node:fs";
 import * as WorktreeManager from "./WorktreeManager.js";
 import {
   SandboxFactory,
@@ -28,6 +38,8 @@ import {
 } from "./SandboxFactory.js";
 
 const mockExecFile = vi.mocked(execFile);
+const mockStatSync = vi.mocked(statSync);
+const mockReadFileSync = vi.mocked(readFileSync);
 const mockCreate = vi.mocked(WorktreeManager.create);
 const mockRemove = vi.mocked(WorktreeManager.remove);
 const mockPruneStale = vi.mocked(WorktreeManager.pruneStale);
@@ -82,6 +94,8 @@ describe("WorktreeDockerSandboxFactory", () => {
     mockPruneStale.mockReturnValue(Effect.void);
     // Default: clean worktree (no uncommitted changes)
     mockHasUncommittedChanges.mockReturnValue(Effect.succeed(false));
+    // Default: .git is a directory (normal repo)
+    mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
     mockDockerSuccess();
   });
 
@@ -556,6 +570,45 @@ describe("WorktreeDockerSandboxFactory", () => {
       );
 
       expect(receivedInfo?.hostWorktreePath).toBeUndefined();
+    });
+
+    it("mounts only one git volume when .git is a directory (normal repo)", async () => {
+      mockStatSync.mockReturnValue({ isDirectory: () => true } as any);
+
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const factory = yield* SandboxFactory;
+          yield* factory.withSandbox(() => Effect.void);
+        }).pipe(Effect.provide(makeNoneLayer())),
+      );
+
+      const runArgs = capturedArgs().find((args) => args[0] === "run");
+      expect(runArgs).toBeDefined();
+      // Should have exactly one git-related -v mount (the .git directory)
+      const gitMounts = runArgs!.filter((arg) => arg.includes(".git:"));
+      expect(gitMounts).toHaveLength(1);
+      expect(gitMounts[0]).toBe(`${hostRepoDir}/.git:${hostRepoDir}/.git`);
+    });
+
+    it("mounts both .git file and parent .git dir when .git is a worktree file", async () => {
+      mockStatSync.mockReturnValue({ isDirectory: () => false } as any);
+      mockReadFileSync.mockReturnValue(
+        "gitdir: /real/repo/.git/worktrees/my-worktree\n" as any,
+      );
+
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const factory = yield* SandboxFactory;
+          yield* factory.withSandbox(() => Effect.void);
+        }).pipe(Effect.provide(makeNoneLayer())),
+      );
+
+      const runArgs = capturedArgs().find((args) => args[0] === "run");
+      expect(runArgs).toBeDefined();
+      const gitMounts = runArgs!.filter((arg) => arg.includes(".git"));
+      // Should mount both the .git file and the parent .git directory
+      expect(gitMounts).toContain(`${hostRepoDir}/.git:${hostRepoDir}/.git`);
+      expect(gitMounts).toContain("/real/repo/.git:/real/repo/.git");
     });
   });
 
