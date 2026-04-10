@@ -21,6 +21,7 @@ import type {
   IsolatedSandboxHandle,
 } from "./SandboxProvider.js";
 import { syncIn } from "./syncIn.js";
+import { syncOut } from "./syncOut.js";
 
 export interface ExecResult {
   readonly stdout: string;
@@ -332,12 +333,30 @@ export const WorktreeDockerSandboxFactory = {
                 makeEffect({}).pipe(
                   Effect.provide(sandboxLayer),
                 ) as Effect.Effect<A, E | DockerError, Exclude<R, Sandbox>>,
-              // Release
+              // Release: sync commits back to host, then close
               ({ handle }) =>
                 Effect.tryPromise({
-                  try: () => handle.close(),
-                  catch: () => undefined,
-                }).pipe(Effect.orDie),
+                  try: () => syncOut(hostRepoDir, handle),
+                  catch: (e) =>
+                    new WorktreeError({
+                      message: `syncOut failed: ${e instanceof Error ? e.message : String(e)}`,
+                    }),
+                }).pipe(
+                  Effect.catchAll((e) =>
+                    Effect.sync(() => {
+                      console.error(
+                        `[sandcastle] Warning: syncOut failed: ${e.message}`,
+                      );
+                    }),
+                  ),
+                  Effect.andThen(
+                    Effect.tryPromise({
+                      try: () => handle.close(),
+                      catch: () => undefined,
+                    }),
+                  ),
+                  Effect.orDie,
+                ),
             ).pipe(
               Effect.map((value) => ({
                 value,
