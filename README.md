@@ -468,6 +468,275 @@ agent: claudeCode("claude-opus-4-6", { effort: "high" });
 
 Environment variables are resolved automatically from `.sandcastle/.env` and `process.env` — no need to pass them to the API. The required variables depend on the **agent provider** (see `sandcastle init` output for details).
 
+## Custom Sandbox Providers
+
+Sandcastle ships with a Docker provider, but you can create your own. A sandbox provider tells Sandcastle how to execute commands in an isolated environment. There are two kinds:
+
+- **Bind-mount** — the sandbox can mount a host directory. Sandcastle creates a worktree on the host and the provider mounts it in. No file sync needed. Use this for Docker, Podman, or any local container runtime.
+- **Isolated** — the sandbox has its own filesystem (e.g. a cloud VM). The provider handles syncing code in and out via `copyIn` and `copyOut`. Use this when the sandbox cannot access the host filesystem.
+
+### The sandbox handle contract
+
+Both provider types return a **sandbox handle** from their `create()` function. The handle exposes:
+
+| Method          | Required | Description                                       |
+| --------------- | -------- | ------------------------------------------------- |
+| `exec`          | Both     | Run a command, return `ExecResult` when done      |
+| `execStreaming` | Both     | Run a command, call `onLine` for each stdout line |
+| `close`         | Both     | Tear down the sandbox                             |
+| `copyIn`        | Isolated | Copy a file from the host into the sandbox        |
+| `copyOut`       | Isolated | Copy a file from the sandbox to the host          |
+| `workspacePath` | Both     | Absolute path to the workspace inside the sandbox |
+
+### `ExecResult`
+
+Every `exec` and `execStreaming` call returns an `ExecResult`:
+
+```typescript
+interface ExecResult {
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+}
+```
+
+### Bind-mount provider example
+
+A minimal bind-mount provider that shells out to local processes (no container):
+
+```typescript
+import {
+  createBindMountSandboxProvider,
+  type BindMountCreateOptions,
+  type BindMountSandboxHandle,
+  type ExecResult,
+} from "@ai-hero/sandcastle";
+import { execFile, spawn } from "node:child_process";
+import { createInterface } from "node:readline";
+
+const localProcess = () =>
+  createBindMountSandboxProvider({
+    name: "local-process",
+    branchStrategy: { type: "merge-to-head" },
+    create: async (
+      options: BindMountCreateOptions,
+    ): Promise<BindMountSandboxHandle> => {
+      const workspacePath = options.worktreePath;
+
+      return {
+        workspacePath,
+
+        exec: (command: string, opts?: { cwd?: string }): Promise<ExecResult> =>
+          new Promise((resolve, reject) => {
+            execFile(
+              "sh",
+              ["-c", command],
+              { cwd: opts?.cwd ?? workspacePath, maxBuffer: 10 * 1024 * 1024 },
+              (error, stdout, stderr) => {
+                if (error && error.code === undefined) {
+                  reject(new Error(`exec failed: ${error.message}`));
+                } else {
+                  resolve({
+                    stdout: stdout.toString(),
+                    stderr: stderr.toString(),
+                    exitCode: typeof error?.code === "number" ? error.code : 0,
+                  });
+                }
+              },
+            );
+          }),
+
+        execStreaming: (
+          command: string,
+          onLine: (line: string) => void,
+          opts?: { cwd?: string },
+        ): Promise<ExecResult> =>
+          new Promise((resolve, reject) => {
+            const proc = spawn("sh", ["-c", command], {
+              cwd: opts?.cwd ?? workspacePath,
+              stdio: ["ignore", "pipe", "pipe"],
+            });
+
+            const stdoutChunks: string[] = [];
+            const stderrChunks: string[] = [];
+
+            const rl = createInterface({ input: proc.stdout! });
+            rl.on("line", (line) => {
+              stdoutChunks.push(line);
+              onLine(line); // forward each line to Sandcastle
+            });
+
+            proc.stderr!.on("data", (chunk: Buffer) => {
+              stderrChunks.push(chunk.toString());
+            });
+
+            proc.on("error", (err) => reject(err));
+            proc.on("close", (code) => {
+              resolve({
+                stdout: stdoutChunks.join("\n"),
+                stderr: stderrChunks.join(""),
+                exitCode: code ?? 0,
+              });
+            });
+          }),
+
+        close: async () => {
+          // nothing to tear down for a local process
+        },
+      };
+    },
+  });
+```
+
+### Isolated provider example
+
+A minimal isolated provider using a temp directory:
+
+```typescript
+import {
+  createIsolatedSandboxProvider,
+  type IsolatedSandboxHandle,
+  type ExecResult,
+} from "@ai-hero/sandcastle";
+import { execFile, spawn } from "node:child_process";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { createInterface } from "node:readline";
+
+const tempDir = () =>
+  createIsolatedSandboxProvider({
+    name: "temp-dir",
+    branchStrategy: { type: "merge-to-head" },
+    create: async (): Promise<IsolatedSandboxHandle> => {
+      const root = await mkdtemp(join(tmpdir(), "sandbox-"));
+      const workspacePath = join(root, "workspace");
+      await mkdir(workspacePath, { recursive: true });
+
+      return {
+        workspacePath,
+
+        exec: (command: string, opts?: { cwd?: string }): Promise<ExecResult> =>
+          new Promise((resolve, reject) => {
+            execFile(
+              "sh",
+              ["-c", command],
+              { cwd: opts?.cwd ?? workspacePath, maxBuffer: 10 * 1024 * 1024 },
+              (error, stdout, stderr) => {
+                if (error && error.code === undefined) {
+                  reject(new Error(`exec failed: ${error.message}`));
+                } else {
+                  resolve({
+                    stdout: stdout.toString(),
+                    stderr: stderr.toString(),
+                    exitCode: typeof error?.code === "number" ? error.code : 0,
+                  });
+                }
+              },
+            );
+          }),
+
+        execStreaming: (
+          command: string,
+          onLine: (line: string) => void,
+          opts?: { cwd?: string },
+        ): Promise<ExecResult> =>
+          new Promise((resolve, reject) => {
+            const proc = spawn("sh", ["-c", command], {
+              cwd: opts?.cwd ?? workspacePath,
+              stdio: ["ignore", "pipe", "pipe"],
+            });
+
+            const stdoutChunks: string[] = [];
+            const stderrChunks: string[] = [];
+
+            const rl = createInterface({ input: proc.stdout! });
+            rl.on("line", (line) => {
+              stdoutChunks.push(line);
+              onLine(line);
+            });
+
+            proc.stderr!.on("data", (chunk: Buffer) => {
+              stderrChunks.push(chunk.toString());
+            });
+
+            proc.on("error", (err) => reject(err));
+            proc.on("close", (code) => {
+              resolve({
+                stdout: stdoutChunks.join("\n"),
+                stderr: stderrChunks.join(""),
+                exitCode: code ?? 0,
+              });
+            });
+          }),
+
+        copyIn: async (hostPath: string, sandboxPath: string) => {
+          await mkdir(dirname(sandboxPath), { recursive: true });
+          await copyFile(hostPath, sandboxPath);
+        },
+
+        copyOut: async (sandboxPath: string, hostPath: string) => {
+          await mkdir(dirname(hostPath), { recursive: true });
+          await copyFile(sandboxPath, hostPath);
+        },
+
+        close: async () => {
+          await rm(root, { recursive: true, force: true });
+        },
+      };
+    },
+  });
+```
+
+### Branch strategies
+
+A branch strategy controls where the agent's commits land. Configure it when constructing the provider:
+
+| Strategy        | Behavior                                                                 | Bind-mount | Isolated  |
+| --------------- | ------------------------------------------------------------------------ | ---------- | --------- |
+| `head`          | Agent writes directly to the host working directory. No worktree created | Default    | N/A       |
+| `merge-to-head` | Sandcastle creates a temp branch, merges back to HEAD when done          | Supported  | Default   |
+| `branch`        | Commits land on an explicit named branch you provide                     | Supported  | Supported |
+
+**When to use each:**
+
+- **`head`** — fast iteration during development. No branch indirection, no merge step. Only works with bind-mount providers since the agent needs direct host filesystem access.
+- **`merge-to-head`** — safe default for automation. The agent works on a throwaway branch; if something goes wrong, HEAD is untouched. Use this for CI or unattended runs.
+- **`branch`** — when you want commits on a specific branch (e.g. for a PR). Pass `{ type: "branch", branch: "agent/fix-42" }`.
+
+```typescript
+// head — direct write, bind-mount only
+const provider = localProcess();
+// merge-to-head — temp branch, merge back (default for isolated)
+const provider = tempDir();
+// branch — explicit named branch
+import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
+const provider = docker({
+  branchStrategy: { type: "branch", branch: "agent/fix-42" },
+});
+```
+
+### Passing to `run()`
+
+Pass your custom provider via the `sandbox` option — it works the same as the built-in `docker()` provider:
+
+```typescript
+import { run, claudeCode } from "@ai-hero/sandcastle";
+
+const result = await run({
+  agent: claudeCode("claude-opus-4-6"),
+  sandbox: localProcess(), // your custom provider
+  prompt: "Fix issue #42 in this repo.",
+});
+```
+
+### Reference implementations
+
+For real-world examples, see:
+
+- [`src/sandboxes/docker.ts`](src/sandboxes/docker.ts) — bind-mount provider using Docker containers
+- [`src/sandboxes/test-isolated.ts`](src/sandboxes/test-isolated.ts) — isolated provider using temp directories (used in tests)
+
 ## Configuration
 
 ### Config directory (`.sandcastle/`)
