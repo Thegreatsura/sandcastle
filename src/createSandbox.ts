@@ -304,7 +304,7 @@ export const createSandbox = async (
             })()
           : silentDisplayLayer;
 
-      // Build a SandboxFactory that reuses the existing container/sandbox
+      // Build a SandboxFactory that reuses the existing sandbox
       const reuseFactoryLayer = Layer.succeed(SandboxFactory, {
         withSandbox: (makeEffect) =>
           makeEffect({ hostWorktreePath: worktreePath }).pipe(
