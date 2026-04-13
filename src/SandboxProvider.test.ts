@@ -11,7 +11,6 @@ describe("createBindMountSandboxProvider", () => {
   const makeMockHandle = (): BindMountSandboxHandle => ({
     workspacePath: "/workspace",
     exec: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
-
     close: vi.fn(async () => {}),
   });
 
@@ -69,7 +68,6 @@ describe("createIsolatedSandboxProvider", () => {
   const makeMockHandle = (): IsolatedSandboxHandle => ({
     workspacePath: "/workspace",
     exec: vi.fn(async () => ({ stdout: "", stderr: "", exitCode: 0 })),
-
     copyIn: vi.fn(async () => {}),
     copyOut: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
