@@ -2398,6 +2398,197 @@ describe("Orchestrator with pi provider", () => {
     expect(result.iterationsRun).toBe(1);
     expect(result.completionSignal).toBe("<promise>COMPLETE</promise>");
   });
+
+  it("buffers small pi text deltas into larger display chunks", async () => {
+    const hostDir = await mkdtemp(join(tmpdir(), "orch-pi-buf-"));
+    await initRepo(hostDir);
+    await commitFile(hostDir, "hello.txt", "hello", "initial commit");
+
+    // Build a mock that streams many tiny text_delta events (one per word),
+    // mimicking Pi's real streaming behavior.
+    const words = [
+      "Hello",
+      " ",
+      "world",
+      ".",
+      " ",
+      "This",
+      " ",
+      "is",
+      " ",
+      "a",
+      " ",
+      "test",
+      ".\n",
+    ];
+    const agentResult = "Hello world. This is a test.";
+    const streamLines: string[] = [];
+    for (const word of words) {
+      streamLines.push(
+        JSON.stringify({
+          type: "message_update",
+          assistantMessageEvent: { type: "text_delta", delta: word },
+        }),
+      );
+    }
+    streamLines.push(
+      JSON.stringify({
+        type: "agent_end",
+        messages: [
+          { role: "assistant", content: [{ type: "text", text: agentResult }] },
+        ],
+      }),
+    );
+
+    const ref = Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([]);
+    const displayLayer = SilentDisplay.layer(ref);
+
+    const fsLayer = makeLocalSandboxLayer(hostDir);
+    const mockLayer = Layer.succeed(Sandbox, {
+      exec: (command, options) =>
+        Effect.flatMap(Sandbox, (real) => real.exec(command, options)).pipe(
+          Effect.provide(fsLayer),
+        ),
+      execStreaming: (command, onStdoutLine, options) => {
+        if (command.startsWith("pi ")) {
+          return Effect.sync(() => {
+            for (const line of streamLines) {
+              onStdoutLine(line);
+            }
+            return { stdout: streamLines.join("\n"), stderr: "", exitCode: 0 };
+          });
+        }
+        return Effect.flatMap(Sandbox, (real) =>
+          real.execStreaming(command, onStdoutLine, options),
+        ).pipe(Effect.provide(fsLayer));
+      },
+      copyIn: (hostPath, sandboxPath) =>
+        Effect.flatMap(Sandbox, (real) =>
+          real.copyIn(hostPath, sandboxPath),
+        ).pipe(Effect.provide(fsLayer)),
+      copyOut: (sandboxPath, hostPath) =>
+        Effect.flatMap(Sandbox, (real) =>
+          real.copyOut(sandboxPath, hostPath),
+        ).pipe(Effect.provide(fsLayer)),
+    });
+
+    const { factoryLayer, sandboxRepoDir } = makeTestSandboxFactory(
+      hostDir,
+      () => mockLayer,
+    );
+
+    await Effect.runPromise(
+      orchestrate({
+        provider: piTestProvider,
+        hostRepoDir: hostDir,
+        sandboxRepoDir,
+        iterations: 1,
+        prompt: "do some work",
+      }).pipe(Effect.provide(Layer.merge(factoryLayer, displayLayer))),
+    );
+
+    const entries = await Effect.runPromise(Ref.get(ref));
+    const textEntries = entries.filter(
+      (e): e is DisplayEntry & { _tag: "text" } => e._tag === "text",
+    );
+
+    // 13 individual text_delta events were streamed, but buffering should
+    // produce far fewer display entries. The exact count depends on heuristics
+    // (sentence boundary, newline, length threshold), but it must be less than 13.
+    expect(textEntries.length).toBeLessThan(words.length);
+    expect(textEntries.length).toBeGreaterThan(0);
+
+    // All text must be preserved — concatenation of display entries equals original
+    const displayedText = textEntries.map((e) => e.message).join("");
+    expect(displayedText).toBe(words.join(""));
+  });
+
+  it("flushes buffered text before tool call display", async () => {
+    const hostDir = await mkdtemp(join(tmpdir(), "orch-pi-tool-"));
+    await initRepo(hostDir);
+    await commitFile(hostDir, "hello.txt", "hello", "initial commit");
+
+    // Stream text deltas followed by a tool_execution_start
+    const streamLines = [
+      JSON.stringify({
+        type: "message_update",
+        assistantMessageEvent: { type: "text_delta", delta: "thinking" },
+      }),
+      JSON.stringify({
+        type: "tool_execution_start",
+        toolName: "Bash",
+        args: { command: "ls" },
+      }),
+      JSON.stringify({
+        type: "agent_end",
+        messages: [
+          { role: "assistant", content: [{ type: "text", text: "done" }] },
+        ],
+      }),
+    ];
+
+    const ref = Ref.unsafeMake<ReadonlyArray<DisplayEntry>>([]);
+    const displayLayer = SilentDisplay.layer(ref);
+
+    const fsLayer = makeLocalSandboxLayer(hostDir);
+    const mockLayer = Layer.succeed(Sandbox, {
+      exec: (command, options) =>
+        Effect.flatMap(Sandbox, (real) => real.exec(command, options)).pipe(
+          Effect.provide(fsLayer),
+        ),
+      execStreaming: (command, onStdoutLine, options) => {
+        if (command.startsWith("pi ")) {
+          return Effect.sync(() => {
+            for (const line of streamLines) {
+              onStdoutLine(line);
+            }
+            return { stdout: streamLines.join("\n"), stderr: "", exitCode: 0 };
+          });
+        }
+        return Effect.flatMap(Sandbox, (real) =>
+          real.execStreaming(command, onStdoutLine, options),
+        ).pipe(Effect.provide(fsLayer));
+      },
+      copyIn: (hostPath, sandboxPath) =>
+        Effect.flatMap(Sandbox, (real) =>
+          real.copyIn(hostPath, sandboxPath),
+        ).pipe(Effect.provide(fsLayer)),
+      copyOut: (sandboxPath, hostPath) =>
+        Effect.flatMap(Sandbox, (real) =>
+          real.copyOut(sandboxPath, hostPath),
+        ).pipe(Effect.provide(fsLayer)),
+    });
+
+    const { factoryLayer, sandboxRepoDir } = makeTestSandboxFactory(
+      hostDir,
+      () => mockLayer,
+    );
+
+    await Effect.runPromise(
+      orchestrate({
+        provider: piTestProvider,
+        hostRepoDir: hostDir,
+        sandboxRepoDir,
+        iterations: 1,
+        prompt: "do some work",
+      }).pipe(Effect.provide(Layer.merge(factoryLayer, displayLayer))),
+    );
+
+    const entries = await Effect.runPromise(Ref.get(ref));
+
+    // Find the text and toolCall entries
+    const relevantEntries = entries.filter(
+      (e) => e._tag === "text" || e._tag === "toolCall",
+    );
+
+    // Text "thinking" must appear BEFORE the tool call
+    const textIdx = relevantEntries.findIndex(
+      (e) => e._tag === "text" && e.message === "thinking",
+    );
+    const toolIdx = relevantEntries.findIndex((e) => e._tag === "toolCall");
+    expect(textIdx).toBeGreaterThanOrEqual(0);
+    expect(toolIdx).toBeGreaterThan(textIdx);
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import type { SandboxService } from "./SandboxFactory.js";
 import { SandboxFactory } from "./SandboxFactory.js";
 import { withSandboxLifecycle, type SandboxHooks } from "./SandboxLifecycle.js";
 import type { AgentProvider } from "./AgentProvider.js";
+import { TextDeltaBuffer } from "./TextDeltaBuffer.js";
 
 export type { ParsedStreamEvent } from "./AgentProvider.js";
 
@@ -197,11 +198,16 @@ export const orchestrate = (
 
               yield* display.status(label("Agent started"), "success");
 
-              // Invoke the agent
+              // Invoke the agent — buffer text deltas so Pi's single-token
+              // chunks are displayed as readable multi-word lines.
+              const textBuffer = new TextDeltaBuffer((chunk) => {
+                Effect.runPromise(display.text(chunk));
+              });
               const onText = (text: string) => {
-                Effect.runPromise(display.text(text));
+                textBuffer.write(text);
               };
               const onToolCall = (name: string, formattedArgs: string) => {
+                textBuffer.flush();
                 Effect.runPromise(display.toolCall(name, formattedArgs));
               };
               const onIdleWarning = (minutes: number) => {
@@ -222,6 +228,9 @@ export const orchestrate = (
                 onIdleWarning,
                 options._idleWarningIntervalMs,
               );
+
+              // Flush any remaining buffered text deltas
+              textBuffer.dispose();
 
               yield* display.status(label("Agent stopped"), "info");
 
