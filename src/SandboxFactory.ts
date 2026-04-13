@@ -35,13 +35,7 @@ export interface ExecResult {
 export interface SandboxService {
   readonly exec: (
     command: string,
-    options?: { cwd?: string },
-  ) => Effect.Effect<ExecResult, ExecError>;
-
-  readonly execStreaming: (
-    command: string,
-    onStdoutLine: (line: string) => void,
-    options?: { cwd?: string },
+    options?: { onLine?: (line: string) => void; cwd?: string },
   ) => Effect.Effect<ExecResult, ExecError>;
 
   /** Copy a file or directory from the host into the sandbox. */
@@ -78,15 +72,6 @@ export const makeSandboxLayerFromHandle = (
           new ExecError({
             command,
             message: `exec failed: ${e instanceof Error ? e.message : String(e)}`,
-          }),
-      }),
-    execStreaming: (command, onStdoutLine, options) =>
-      Effect.tryPromise({
-        try: () => handle.execStreaming(command, onStdoutLine, options),
-        catch: (e) =>
-          new ExecError({
-            command,
-            message: `exec streaming failed: ${e instanceof Error ? e.message : String(e)}`,
           }),
       }),
     copyIn:
