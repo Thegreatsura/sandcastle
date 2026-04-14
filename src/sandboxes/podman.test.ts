@@ -83,7 +83,7 @@ describe("podman()", () => {
     expect(provider.env).toEqual({});
   });
 
-  it("formats readonly SELinux mounts using podman volume syntax", async () => {
+  it("formats readonly SELinux mounts as :ro,z", async () => {
     mockExecFile.mockImplementation((_command, args, callback: any) => {
       callback(null, "", "");
       return undefined as any;
@@ -107,8 +107,96 @@ describe("podman()", () => {
       ([, args]) => Array.isArray(args) && args[0] === "run",
     )?.[1];
 
-    expect(runArgs).toContain("-v");
     expect(runArgs).toContain(`${homedir()}:/mnt/home:ro,z`);
+
+    await handle.close();
+  });
+
+  it("formats writable SELinux mounts as :z", async () => {
+    mockExecFile.mockImplementation((_command, _args, callback: any) => {
+      callback(null, "", "");
+      return undefined as any;
+    });
+
+    const provider = podman({
+      selinuxLabel: "z",
+      mounts: [{ hostPath: "~", sandboxPath: "/mnt/home" }],
+    });
+
+    const handle = await provider.create({
+      worktreePath: "/tmp/worktree",
+      hostRepoPath: "/tmp/repo",
+      mounts: [
+        { hostPath: "/tmp/worktree", sandboxPath: "/home/agent/workspace" },
+      ],
+      env: {},
+    });
+
+    const runArgs = mockExecFile.mock.calls.find(
+      ([, args]) => Array.isArray(args) && args[0] === "run",
+    )?.[1];
+
+    expect(runArgs).toContain(`${homedir()}:/mnt/home:z`);
+
+    await handle.close();
+  });
+
+  it("formats readonly mounts without SELinux as :ro", async () => {
+    mockExecFile.mockImplementation((_command, _args, callback: any) => {
+      callback(null, "", "");
+      return undefined as any;
+    });
+
+    const provider = podman({
+      selinuxLabel: false,
+      mounts: [{ hostPath: "~", sandboxPath: "/mnt/home", readonly: true }],
+    });
+
+    const handle = await provider.create({
+      worktreePath: "/tmp/worktree",
+      hostRepoPath: "/tmp/repo",
+      mounts: [
+        { hostPath: "/tmp/worktree", sandboxPath: "/home/agent/workspace" },
+      ],
+      env: {},
+    });
+
+    const runArgs = mockExecFile.mock.calls.find(
+      ([, args]) => Array.isArray(args) && args[0] === "run",
+    )?.[1];
+
+    expect(runArgs).toContain(`${homedir()}:/mnt/home:ro`);
+
+    await handle.close();
+  });
+
+  it("formats mounts with no options when writable and no SELinux", async () => {
+    mockExecFile.mockImplementation((_command, _args, callback: any) => {
+      callback(null, "", "");
+      return undefined as any;
+    });
+
+    const provider = podman({
+      selinuxLabel: false,
+      mounts: [{ hostPath: "~", sandboxPath: "/mnt/home" }],
+    });
+
+    const handle = await provider.create({
+      worktreePath: "/tmp/worktree",
+      hostRepoPath: "/tmp/repo",
+      mounts: [
+        { hostPath: "/tmp/worktree", sandboxPath: "/home/agent/workspace" },
+      ],
+      env: {},
+    });
+
+    const runArgs = mockExecFile.mock.calls.find(
+      ([, args]) => Array.isArray(args) && args[0] === "run",
+    )?.[1];
+
+    expect(runArgs).toContain(`${homedir()}:/mnt/home`);
+    // Should NOT have any trailing options
+    expect(runArgs).not.toContain(`${homedir()}:/mnt/home:`);
 
     await handle.close();
   });
