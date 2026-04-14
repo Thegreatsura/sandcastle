@@ -110,6 +110,47 @@ describe("PromptArgumentSubstitution", () => {
     expect(result).toBe("Output: !`gh issue view 123`");
   });
 
+  it("replaces {{ KEY }} with spaces inside braces", async () => {
+    const { layer } = setup();
+    const result = await run("Hello {{ NAME }}", { NAME: "world" }, layer);
+    expect(result).toBe("Hello world");
+  });
+
+  it("replaces {{  KEY  }} with multiple spaces", async () => {
+    const { layer } = setup();
+    const result = await run("Hello {{  NAME  }}", { NAME: "world" }, layer);
+    expect(result).toBe("Hello world");
+  });
+
+  it("replaces asymmetric whitespace like {{ KEY}}", async () => {
+    const { layer } = setup();
+    const result = await run("Hello {{ NAME}}", { NAME: "world" }, layer);
+    expect(result).toBe("Hello world");
+  });
+
+  it("replaces placeholder with tab whitespace", async () => {
+    const { layer } = setup();
+    const result = await run("Hello {{\tNAME\t}}", { NAME: "world" }, layer);
+    expect(result).toBe("Hello world");
+  });
+
+  it("error message uses normalized form for spaced placeholder", async () => {
+    const { layer } = setup();
+    const error = await runFail("Hello {{ MISSING }}", {}, layer);
+    expect(error).toBeInstanceOf(PromptError);
+    expect(error.message).toContain("{{MISSING}}");
+  });
+
+  it("spaced placeholder counts as reference for unused-arg check", async () => {
+    const { layer, displayRef } = setup();
+    await run("{{ NAME }}", { NAME: "world" }, layer);
+    const entries = await Effect.runPromise(Ref.get(displayRef));
+    const warnings = entries.filter(
+      (e) => e._tag === "status" && e.severity === "warn",
+    );
+    expect(warnings).toHaveLength(0);
+  });
+
   it("handles keys with underscores and digits", async () => {
     const { layer } = setup();
     const result = await run("{{MY_KEY_2}} here", { MY_KEY_2: "value" }, layer);

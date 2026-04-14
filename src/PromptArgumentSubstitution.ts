@@ -18,7 +18,7 @@ export const BUILT_IN_PROMPT_ARG_KEYS = [
   "TARGET_BRANCH",
 ] as const;
 
-const PLACEHOLDER_PATTERN = /\{\{([A-Za-z_][A-Za-z0-9_]*)\}\}/g;
+const PLACEHOLDER_PATTERN = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
 /**
  * Validates that the user has not provided any built-in prompt argument keys.
