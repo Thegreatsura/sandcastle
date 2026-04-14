@@ -887,11 +887,8 @@ describe("createSandbox", () => {
         prompt: "do something interactively",
       });
 
-      expect(result).toHaveProperty("exitCode");
-      expect(result).toHaveProperty("commits");
       expect(result.exitCode).toBe(0);
       expect(Array.isArray(result.commits)).toBe(true);
-      // Verify the prompt was passed through buildInteractiveArgs
       expect(receivedArgs).toContain("do something interactively");
     } finally {
       await sandbox.close();

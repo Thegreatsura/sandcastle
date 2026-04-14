@@ -108,8 +108,6 @@ export interface SandboxInteractiveOptions {
   readonly promptArgs?: PromptArgs;
   /** Display name for this interactive session. */
   readonly name?: string;
-  /** Environment variables to inject into the sandbox. */
-  readonly env?: Record<string, string>;
 }
 
 export interface SandboxInteractiveResult {
@@ -490,7 +488,7 @@ export const createSandbox = async (
       const lifecycleEffect = withSandboxLifecycle(
         {
           hostRepoDir,
-          sandboxRepoDir: sandboxRepoDir,
+          sandboxRepoDir,
           branch,
           hostWorktreePath: worktreePath,
           applyToHost,
