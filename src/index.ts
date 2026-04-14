@@ -1,5 +1,7 @@
 export { run } from "./run.js";
 export type { RunOptions, RunResult, LoggingOption } from "./run.js";
+export { interactive } from "./interactive.js";
+export type { InteractiveOptions, InteractiveResult } from "./interactive.js";
 export { createSandbox } from "./createSandbox.js";
 export type {
   CreateSandboxOptions,
@@ -28,6 +30,7 @@ export type {
   IsolatedSandboxProvider,
   BindMountSandboxHandle,
   IsolatedSandboxHandle,
+  InteractiveExecOptions,
   ExecResult,
   BindMountCreateOptions,
   BindMountSandboxProviderConfig,

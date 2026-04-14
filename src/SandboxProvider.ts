@@ -12,6 +12,14 @@ export interface ExecResult {
   readonly exitCode: number;
 }
 
+/** Options for interactiveExec — the streams the provider should wire to the spawned process. */
+export interface InteractiveExecOptions {
+  readonly stdin: NodeJS.ReadableStream;
+  readonly stdout: NodeJS.WritableStream;
+  readonly stderr: NodeJS.WritableStream;
+  readonly cwd?: string;
+}
+
 /** Handle to a running bind-mount sandbox. */
 export interface BindMountSandboxHandle {
   /** Absolute path to the workspace inside the sandbox. */
@@ -29,6 +37,16 @@ export interface BindMountSandboxHandle {
     command: string,
     options?: { onLine?: (line: string) => void; cwd?: string; sudo?: boolean },
   ): Promise<ExecResult>;
+  /**
+   * Launch an interactive process inside the sandbox.
+   * Optional — providers that support interactive sessions implement this.
+   * The provider detects TTY mode from the streams (e.g. stdin.isTTY) and
+   * allocates a pseudo-terminal accordingly.
+   */
+  interactiveExec?(
+    args: string[],
+    options: InteractiveExecOptions,
+  ): Promise<{ exitCode: number }>;
   /** Tear down the sandbox. */
   close(): Promise<void>;
 }
@@ -78,6 +96,16 @@ export interface IsolatedSandboxHandle {
     command: string,
     options?: { onLine?: (line: string) => void; cwd?: string; sudo?: boolean },
   ): Promise<ExecResult>;
+  /**
+   * Launch an interactive process inside the sandbox.
+   * Optional — providers that support interactive sessions implement this.
+   * The provider detects TTY mode from the streams (e.g. stdin.isTTY) and
+   * allocates a pseudo-terminal accordingly.
+   */
+  interactiveExec?(
+    args: string[],
+    options: InteractiveExecOptions,
+  ): Promise<{ exitCode: number }>;
   /** Copy a file or directory from the host into the sandbox. */
   copyIn(hostPath: string, sandboxPath: string): Promise<void>;
   /** Copy a single file from the sandbox to the host. */

@@ -21,6 +21,7 @@ import {
   type BindMountCreateOptions,
   type BindMountSandboxHandle,
   type ExecResult,
+  type InteractiveExecOptions,
 } from "../SandboxProvider.js";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -187,6 +188,42 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
                 }
               },
             );
+          });
+        },
+
+        interactiveExec: (
+          args: string[],
+          opts: InteractiveExecOptions,
+        ): Promise<{ exitCode: number }> => {
+          return new Promise((resolve, reject) => {
+            const dockerArgs = ["exec"];
+            // Allocate a pseudo-terminal when stdin looks like a TTY
+            if (
+              "isTTY" in opts.stdin &&
+              (opts.stdin as { isTTY?: boolean }).isTTY
+            ) {
+              dockerArgs.push("-it");
+            } else {
+              dockerArgs.push("-i");
+            }
+            if (opts.cwd) dockerArgs.push("-w", opts.cwd);
+            dockerArgs.push(containerName, ...args);
+
+            const proc = spawn("docker", dockerArgs, {
+              stdio: [
+                opts.stdin as unknown as "pipe",
+                opts.stdout as unknown as "pipe",
+                opts.stderr as unknown as "pipe",
+              ],
+            });
+
+            proc.on("error", (error: Error) => {
+              reject(new Error(`docker exec failed: ${error.message}`));
+            });
+
+            proc.on("close", (code: number | null) => {
+              resolve({ exitCode: code ?? 0 });
+            });
           });
         },
 
