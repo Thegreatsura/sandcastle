@@ -406,6 +406,7 @@ export const WorktreeDockerSandboxFactory = {
                   // Use
                   ({ sandboxLayer, workspacePath }) =>
                     makeEffect({
+                      hostWorktreePath: hostRepoDir,
                       sandboxWorkspacePath: workspacePath,
                       applyToHost: () => Effect.void,
                     }).pipe(Effect.provide(sandboxLayer)) as Effect.Effect<
