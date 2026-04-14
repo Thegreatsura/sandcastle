@@ -7,7 +7,6 @@ import type { AgentProvider } from "./AgentProvider.js";
 import type {
   SandboxProvider,
   BindMountSandboxHandle,
-  IsolatedSandboxHandle,
 } from "./SandboxProvider.js";
 import { resolveGitMounts, SANDBOX_WORKSPACE_DIR } from "./SandboxFactory.js";
 import { startSandbox } from "./startSandbox.js";
@@ -56,9 +55,6 @@ export const interactive = async (
 
   const hostRepoDir = process.cwd();
 
-  // Generate a branch for the interactive session
-  const branch = WorktreeManager.generateTempBranchName(name);
-
   // 1. Create worktree
   const worktreeInfo = await Effect.runPromise(
     WorktreeManager.pruneStale(hostRepoDir).pipe(
@@ -68,7 +64,7 @@ export const interactive = async (
     ),
   );
 
-  let handle: BindMountSandboxHandle | IsolatedSandboxHandle | undefined;
+  let handle: BindMountSandboxHandle | undefined;
   let exitCode = 1;
   let preservedWorktreePath: string | undefined;
 
@@ -91,7 +87,15 @@ export const interactive = async (
     );
     handle = startResult.handle;
 
-    // 3. Setup sandbox (safe.directory, git config)
+    // 3. Check interactiveExec is available (before doing any setup work)
+    if (!handle.interactiveExec) {
+      throw new Error(
+        `Sandbox provider does not support interactiveExec. ` +
+          `The provider must implement the optional interactiveExec method to use interactive().`,
+      );
+    }
+
+    // 4. Setup sandbox (safe.directory, git config)
     await handle.exec(
       `git config --global --add safe.directory "${startResult.workspacePath}"`,
     );
@@ -116,19 +120,11 @@ export const interactive = async (
       );
     }
 
-    // 4. Record base HEAD
+    // 5. Record base HEAD
     const { stdout: baseHeadOut } = await execAsync("git rev-parse HEAD", {
       cwd: worktreeInfo.path,
     });
     const baseHead = baseHeadOut.trim();
-
-    // 5. Check interactiveExec is available
-    if (!handle.interactiveExec) {
-      throw new Error(
-        `Sandbox provider does not support interactiveExec. ` +
-          `The provider must implement the optional interactiveExec method to use interactive().`,
-      );
-    }
 
     // 6. Run interactive session
     const interactiveArgs = provider.buildInteractiveArgs(prompt);

@@ -6,7 +6,12 @@
  *   await run({ agent: claudeCode("claude-opus-4-6"), sandbox: docker() });
  */
 
-import { execFile, execFileSync, spawn } from "node:child_process";
+import {
+  execFile,
+  execFileSync,
+  spawn,
+  type StdioOptions,
+} from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { Effect } from "effect";
@@ -210,11 +215,7 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
             dockerArgs.push(containerName, ...args);
 
             const proc = spawn("docker", dockerArgs, {
-              stdio: [
-                opts.stdin as unknown as "pipe",
-                opts.stdout as unknown as "pipe",
-                opts.stderr as unknown as "pipe",
-              ],
+              stdio: [opts.stdin, opts.stdout, opts.stderr] as StdioOptions,
             });
 
             proc.on("error", (error: Error) => {

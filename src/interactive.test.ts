@@ -1,9 +1,8 @@
 import { execSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { PassThrough } from "node:stream";
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import { interactive, type InteractiveOptions } from "./interactive.js";
 import {
   createBindMountSandboxProvider,
