@@ -1,5 +1,11 @@
 # @ai-hero/sandcastle
 
+## 0.4.7
+
+### Patch Changes
+
+- 6d0c1fb: Make `sandbox` optional in `InteractiveOptions`, defaulting to `noSandbox()`
+
 ## 0.4.6
 
 ### Patch Changes
