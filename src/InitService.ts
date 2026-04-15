@@ -268,6 +268,42 @@ export const getAgent = (name: string): AgentEntry | undefined =>
   AGENT_REGISTRY.find((a) => a.name === name);
 
 // ---------------------------------------------------------------------------
+// Sandbox provider registry (internal — not part of public API)
+// ---------------------------------------------------------------------------
+
+export interface SandboxProviderEntry {
+  readonly name: string;
+  readonly label: string;
+  /** Filename written to .sandcastle/ (e.g. "Dockerfile" or "Containerfile") */
+  readonly containerfileName: string;
+  /** CLI namespace for build/remove commands (e.g. "docker" or "podman") */
+  readonly cliNamespace: string;
+}
+
+const SANDBOX_PROVIDER_REGISTRY: SandboxProviderEntry[] = [
+  {
+    name: "docker",
+    label: "Docker",
+    containerfileName: "Dockerfile",
+    cliNamespace: "docker",
+  },
+  {
+    name: "podman",
+    label: "Podman",
+    containerfileName: "Containerfile",
+    cliNamespace: "podman",
+  },
+];
+
+export const listSandboxProviders = (): SandboxProviderEntry[] =>
+  SANDBOX_PROVIDER_REGISTRY;
+
+export const getSandboxProvider = (
+  name: string,
+): SandboxProviderEntry | undefined =>
+  SANDBOX_PROVIDER_REGISTRY.find((p) => p.name === name);
+
+// ---------------------------------------------------------------------------
 // Next steps
 // ---------------------------------------------------------------------------
 
@@ -507,6 +543,7 @@ export interface ScaffoldOptions {
   templateName?: string;
   createLabel?: boolean;
   backlogManager?: BacklogManagerEntry;
+  sandboxProvider?: SandboxProviderEntry;
 }
 
 export interface ScaffoldResult {
@@ -549,6 +586,7 @@ export const scaffold = (
       templateName = "blank",
       createLabel = true,
       backlogManager = BACKLOG_MANAGER_REGISTRY[0]!, // default: github-issues
+      sandboxProvider = SANDBOX_PROVIDER_REGISTRY[0]!, // default: docker
     } = options;
     const fs = yield* FileSystem.FileSystem;
     const configDir = join(repoDir, ".sandcastle");
@@ -576,7 +614,7 @@ export const scaffold = (
       [
         fs
           .writeFileString(
-            join(configDir, "Dockerfile"),
+            join(configDir, sandboxProvider.containerfileName),
             agent.dockerfileTemplate,
           )
           .pipe(Effect.mapError((e) => new Error(e.message))),

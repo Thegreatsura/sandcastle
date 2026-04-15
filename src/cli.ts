@@ -20,10 +20,16 @@ import {
   getAgent,
   listBacklogManagers,
   getBacklogManager,
+  listSandboxProviders,
+  getSandboxProvider,
   getNextStepsLines,
 } from "./InitService.js";
 import { defaultImageName } from "./sandboxes/docker.js";
-import type { AgentEntry, BacklogManagerEntry } from "./InitService.js";
+import type {
+  AgentEntry,
+  BacklogManagerEntry,
+  SandboxProviderEntry,
+} from "./InitService.js";
 import { ConfigDirError, InitError } from "./errors.js";
 
 const require = createRequire(import.meta.url);
@@ -156,6 +162,29 @@ const initCommand = Command.make(
           ? modelFlag.value
           : selectedAgent.defaultModel;
 
+      // Resolve sandbox provider: interactive select (no default — user must choose)
+      const sandboxProviders = listSandboxProviders();
+      let selectedSandboxProvider: SandboxProviderEntry;
+      {
+        const selected = yield* Effect.promise(() =>
+          clack.select({
+            message: "Select a sandbox provider:",
+            options: sandboxProviders.map((p) => ({
+              value: p.name,
+              label: p.label,
+            })),
+          }),
+        );
+        if (clack.isCancel(selected)) {
+          yield* Effect.fail(
+            new InitError({
+              message: "Sandbox provider selection cancelled.",
+            }),
+          );
+        }
+        selectedSandboxProvider = getSandboxProvider(selected as string)!;
+      }
+
       // Resolve backlog manager: interactive select
       const backlogManagers = listBacklogManagers();
       let selectedBacklogManager: BacklogManagerEntry;
@@ -235,6 +264,7 @@ const initCommand = Command.make(
           templateName: selectedTemplate,
           createLabel: shouldCreateLabel === true,
           backlogManager: selectedBacklogManager,
+          sandboxProvider: selectedSandboxProvider,
         }).pipe(
           Effect.mapError(
             (e) =>
@@ -246,23 +276,31 @@ const initCommand = Command.make(
       );
 
       // Prompt user before building image
+      const providerLabel = selectedSandboxProvider.label;
       const shouldBuild = yield* Effect.promise(() =>
         clack.confirm({
-          message: "Build the default Docker image now?",
+          message: `Build the default ${providerLabel} image now?`,
           initialValue: true,
         }),
       );
 
       if (shouldBuild === true) {
-        const dockerfileDir = join(cwd, CONFIG_DIR);
-        yield* d.spinner(
-          `Building Docker image '${imageName}'...`,
-          buildImage(imageName, dockerfileDir),
-        );
+        const containerfileDir = join(cwd, CONFIG_DIR);
+        if (selectedSandboxProvider.name === "podman") {
+          yield* d.spinner(
+            `Building Podman image '${imageName}'...`,
+            podmanBuildImage(imageName, containerfileDir),
+          );
+        } else {
+          yield* d.spinner(
+            `Building Docker image '${imageName}'...`,
+            buildImage(imageName, containerfileDir),
+          );
+        }
         yield* d.status("Init complete! Image built successfully.", "success");
       } else {
         yield* d.status(
-          "Init complete! Run `sandcastle docker build-image` to build the Docker image later.",
+          `Init complete! Run \`sandcastle ${selectedSandboxProvider.cliNamespace} build-image\` to build the ${providerLabel} image later.`,
           "success",
         );
       }

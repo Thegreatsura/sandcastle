@@ -422,7 +422,7 @@ Tell the agent to output your chosen string(s) in the prompt, and the orchestrat
 
 ### Templates
 
-`sandcastle init` prompts you to choose a backlog manager (GitHub Issues or Beads) and a template, which scaffolds a ready-to-use prompt and `main.mts` suited to a specific workflow. If your project's `package.json` has `"type": "module"`, the file will be named `main.ts` instead. Five templates are available:
+`sandcastle init` prompts you to choose a sandbox provider (Docker or Podman), a backlog manager (GitHub Issues or Beads), and a template, which scaffolds a ready-to-use prompt and `main.mts` suited to a specific workflow. If your project's `package.json` has `"type": "module"`, the file will be named `main.ts` instead. Five templates are available:
 
 | Template                       | Description                                                               |
 | ------------------------------ | ------------------------------------------------------------------------- |
@@ -438,7 +438,7 @@ Select a template during `sandcastle init` when prompted, or re-run init in a fr
 
 ### `sandcastle init`
 
-Scaffolds the `.sandcastle/` config directory and builds the Docker image. This is the first command you run in a new repo.
+Scaffolds the `.sandcastle/` config directory and builds the container image. This is the first command you run in a new repo. You choose a sandbox provider (Docker or Podman) during init — selecting Podman writes a `Containerfile` instead of `Dockerfile` and uses `sandcastle podman build-image` for the build step.
 
 | Option         | Required | Default                      | Description                                                          |
 | -------------- | -------- | ---------------------------- | -------------------------------------------------------------------- |

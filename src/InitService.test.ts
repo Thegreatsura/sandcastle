@@ -12,6 +12,8 @@ import {
   listTemplates,
   listBacklogManagers,
   getBacklogManager,
+  listSandboxProviders,
+  getSandboxProvider,
 } from "./InitService.js";
 import type { AgentEntry, ScaffoldOptions } from "./InitService.js";
 import { SANDBOX_WORKSPACE_DIR } from "./SandboxFactory.js";
@@ -1519,5 +1521,86 @@ describe("InitService scaffold", () => {
 
       expect(result.mainFilename).toBe("main.mts");
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sandbox provider selection
+  // ---------------------------------------------------------------------------
+
+  describe("sandbox provider", () => {
+    const dockerProvider = getSandboxProvider("docker")!;
+    const podmanProvider = getSandboxProvider("podman")!;
+
+    it("selecting docker writes Dockerfile to .sandcastle/", async () => {
+      const dir = await makeDir();
+      await runScaffold(dir, { sandboxProvider: dockerProvider });
+
+      const dockerfile = await readFile(
+        join(dir, ".sandcastle", "Dockerfile"),
+        "utf-8",
+      );
+      expect(dockerfile).toBe(claudeCodeAgent.dockerfileTemplate);
+    });
+
+    it("selecting podman writes Containerfile to .sandcastle/", async () => {
+      const dir = await makeDir();
+      await runScaffold(dir, { sandboxProvider: podmanProvider });
+
+      const containerfile = await readFile(
+        join(dir, ".sandcastle", "Containerfile"),
+        "utf-8",
+      );
+      expect(containerfile).toBe(claudeCodeAgent.dockerfileTemplate);
+    });
+
+    it("selecting podman does not write Dockerfile", async () => {
+      const dir = await makeDir();
+      await runScaffold(dir, { sandboxProvider: podmanProvider });
+
+      const { access } = await import("node:fs/promises");
+      await expect(
+        access(join(dir, ".sandcastle", "Dockerfile")),
+      ).rejects.toThrow();
+    });
+
+    it("selecting docker does not write Containerfile", async () => {
+      const dir = await makeDir();
+      await runScaffold(dir, { sandboxProvider: dockerProvider });
+
+      const { access } = await import("node:fs/promises");
+      await expect(
+        access(join(dir, ".sandcastle", "Containerfile")),
+      ).rejects.toThrow();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sandbox provider registry
+// ---------------------------------------------------------------------------
+
+describe("Sandbox provider registry", () => {
+  it("listSandboxProviders returns docker and podman", () => {
+    const providers = listSandboxProviders();
+    expect(providers.some((p) => p.name === "docker")).toBe(true);
+    expect(providers.some((p) => p.name === "podman")).toBe(true);
+  });
+
+  it("getSandboxProvider returns docker entry", () => {
+    const provider = getSandboxProvider("docker");
+    expect(provider).toBeDefined();
+    expect(provider!.containerfileName).toBe("Dockerfile");
+    expect(provider!.cliNamespace).toBe("docker");
+  });
+
+  it("getSandboxProvider returns podman entry", () => {
+    const provider = getSandboxProvider("podman");
+    expect(provider).toBeDefined();
+    expect(provider!.containerfileName).toBe("Containerfile");
+    expect(provider!.cliNamespace).toBe("podman");
+  });
+
+  it("getSandboxProvider returns undefined for unknown provider", () => {
+    expect(getSandboxProvider("nonexistent")).toBeUndefined();
   });
 });
