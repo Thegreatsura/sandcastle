@@ -38,6 +38,24 @@ Optional parameters passed to functions should be scrutinised extremely carefull
 
 ---
 
+If you need to provide an override to a function or modules' behavior during tests, don't use an `@internal` property, like so:
+
+```ts
+// BAD
+type Example = {
+  /** @internal Test-only override for the idle warning interval in milliseconds. Default: 60000 (1 minute). */
+  readonly _idleWarningIntervalMs?: number;
+  /** @internal Override for the host projects directory (for testing). */
+  readonly _hostProjectsDir?: string;
+  /** @internal Override for the sandbox projects directory (for testing). */
+  readonly _sandboxProjectsDir?: string;
+};
+```
+
+Instead, create a config layer using Effect for that function, then instantiate that differently in tests and in production. This helps keep the code cleaner.
+
+---
+
 ## Testing
 
 ### Core Principle

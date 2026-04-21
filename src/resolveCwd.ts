@@ -27,21 +27,11 @@ export const resolveCwd = (
 
     const fs = yield* FileSystem.FileSystem;
 
-    const exists = yield* fs
-      .exists(resolved)
-      .pipe(Effect.catchAll(() => Effect.succeed(false)));
-    if (!exists) {
-      return yield* new CwdError({
-        message: `cwd does not exist: ${resolved}`,
-        cwd: resolved,
-      });
-    }
-
     const stat = yield* fs.stat(resolved).pipe(
       Effect.mapError(
-        (e) =>
+        () =>
           new CwdError({
-            message: `cwd stat failed: ${e.message}`,
+            message: `cwd does not exist: ${resolved}`,
             cwd: resolved,
           }),
       ),
