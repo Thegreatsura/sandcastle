@@ -32,10 +32,18 @@ export interface BindMountSandboxHandle {
    * without a streaming implementation, neither will work. A buffered/batch
    * implementation that only calls `onLine` after the process exits does NOT
    * satisfy this contract.
+   *
+   * When `stdin` is set, the implementation pipes the string to the child
+   * process's stdin and closes it. This avoids the Linux 128 KB per-arg limit.
    */
   exec(
     command: string,
-    options?: { onLine?: (line: string) => void; cwd?: string; sudo?: boolean },
+    options?: {
+      onLine?: (line: string) => void;
+      cwd?: string;
+      sudo?: boolean;
+      stdin?: string;
+    },
   ): Promise<ExecResult>;
   /**
    * Launch an interactive process inside the sandbox.
@@ -95,10 +103,18 @@ export interface IsolatedSandboxHandle {
    * without a streaming implementation, neither will work. A buffered/batch
    * implementation that only calls `onLine` after the process exits does NOT
    * satisfy this contract.
+   *
+   * When `stdin` is set, the implementation pipes the string to the child
+   * process's stdin and closes it. This avoids the Linux 128 KB per-arg limit.
    */
   exec(
     command: string,
-    options?: { onLine?: (line: string) => void; cwd?: string; sudo?: boolean },
+    options?: {
+      onLine?: (line: string) => void;
+      cwd?: string;
+      sudo?: boolean;
+      stdin?: string;
+    },
   ): Promise<ExecResult>;
   /**
    * Launch an interactive process inside the sandbox.
@@ -174,10 +190,18 @@ export interface NoSandboxHandle {
    * Implementations MUST support line-by-line streaming via `onLine`. This is
    * how Sandcastle delivers live feedback to the user and enforces idle timeouts —
    * without a streaming implementation, neither will work.
+   *
+   * When `stdin` is set, the implementation pipes the string to the child
+   * process's stdin and closes it. This avoids the Linux 128 KB per-arg limit.
    */
   exec(
     command: string,
-    options?: { onLine?: (line: string) => void; cwd?: string; sudo?: boolean },
+    options?: {
+      onLine?: (line: string) => void;
+      cwd?: string;
+      sudo?: boolean;
+      stdin?: string;
+    },
   ): Promise<ExecResult>;
   /**
    * Launch an interactive process on the host with inherited stdio.

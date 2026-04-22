@@ -15,10 +15,7 @@ import {
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { Effect } from "effect";
-import {
-  startContainer,
-  removeContainer,
-} from "../DockerLifecycle.js";
+import { startContainer, removeContainer } from "../DockerLifecycle.js";
 import {
   createBindMountSandboxProvider,
   type SandboxProvider,
@@ -138,10 +135,12 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
             onLine?: (line: string) => void;
             cwd?: string;
             sudo?: boolean;
+            stdin?: string;
           },
         ): Promise<ExecResult> => {
           const effectiveCommand = opts?.sudo ? `sudo ${command}` : command;
           const args = ["exec"];
+          if (opts?.stdin !== undefined) args.push("-i");
           if (opts?.cwd) args.push("-w", opts.cwd);
           args.push(containerName, "sh", "-c", effectiveCommand);
 
@@ -149,8 +148,17 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
             const onLine = opts.onLine;
             return new Promise((resolve, reject) => {
               const proc = spawn("docker", args, {
-                stdio: ["ignore", "pipe", "pipe"],
+                stdio: [
+                  opts?.stdin !== undefined ? "pipe" : "ignore",
+                  "pipe",
+                  "pipe",
+                ],
               });
+
+              if (opts?.stdin !== undefined) {
+                proc.stdin!.write(opts.stdin);
+                proc.stdin!.end();
+              }
 
               const stdoutChunks: string[] = [];
               const stderrChunks: string[] = [];
@@ -172,6 +180,39 @@ export const docker = (options?: DockerOptions): SandboxProvider => {
               proc.on("close", (code) => {
                 resolve({
                   stdout: stdoutChunks.join("\n"),
+                  stderr: stderrChunks.join(""),
+                  exitCode: code ?? 0,
+                });
+              });
+            });
+          }
+
+          if (opts?.stdin !== undefined) {
+            return new Promise((resolve, reject) => {
+              const proc = spawn("docker", args, {
+                stdio: ["pipe", "pipe", "pipe"],
+              });
+
+              proc.stdin!.write(opts.stdin);
+              proc.stdin!.end();
+
+              const stdoutChunks: string[] = [];
+              const stderrChunks: string[] = [];
+
+              proc.stdout!.on("data", (chunk: Buffer) => {
+                stdoutChunks.push(chunk.toString());
+              });
+              proc.stderr!.on("data", (chunk: Buffer) => {
+                stderrChunks.push(chunk.toString());
+              });
+
+              proc.on("error", (error) => {
+                reject(new Error(`docker exec failed: ${error.message}`));
+              });
+
+              proc.on("close", (code) => {
+                resolve({
+                  stdout: stdoutChunks.join(""),
                   stderr: stderrChunks.join(""),
                   exitCode: code ?? 0,
                 });

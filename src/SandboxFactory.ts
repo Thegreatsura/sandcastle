@@ -36,7 +36,12 @@ export interface ExecResult {
 export interface SandboxService {
   readonly exec: (
     command: string,
-    options?: { onLine?: (line: string) => void; cwd?: string; sudo?: boolean },
+    options?: {
+      onLine?: (line: string) => void;
+      cwd?: string;
+      sudo?: boolean;
+      stdin?: string;
+    },
   ) => Effect.Effect<ExecResult, ExecError>;
 
   /** Copy a file or directory from the host into the sandbox. */

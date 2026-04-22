@@ -48,6 +48,7 @@ export const noSandbox = (options?: NoSandboxOptions): NoSandboxProvider => ({
           onLine?: (line: string) => void;
           cwd?: string;
           sudo?: boolean;
+          stdin?: string;
         },
       ): Promise<ExecResult> => {
         // sudo is a no-op for no-sandbox — the user is already on the host
@@ -57,8 +58,17 @@ export const noSandbox = (options?: NoSandboxOptions): NoSandboxProvider => ({
           const proc = spawn("sh", ["-c", command], {
             cwd,
             env: processEnv,
-            stdio: ["ignore", "pipe", "pipe"],
+            stdio: [
+              opts?.stdin !== undefined ? "pipe" : "ignore",
+              "pipe",
+              "pipe",
+            ],
           });
+
+          if (opts?.stdin !== undefined) {
+            proc.stdin!.write(opts.stdin);
+            proc.stdin!.end();
+          }
 
           const stdoutChunks: string[] = [];
           const stderrChunks: string[] = [];

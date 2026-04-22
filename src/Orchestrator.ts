@@ -97,30 +97,29 @@ const invokeAgent = (
     resetIdleTimer();
 
     const execEffect = Effect.gen(function* () {
-      const execResult = yield* sandbox.exec(
-        provider.buildPrintCommand({
-          prompt,
-          dangerouslySkipPermissions: true,
-          resumeSession,
-        }),
-        {
-          onLine: (line) => {
-            resetIdleTimer();
-            for (const parsed of provider.parseStreamLine(line)) {
-              if (parsed.type === "text") {
-                onText(parsed.text);
-              } else if (parsed.type === "result") {
-                resultText = parsed.result;
-              } else if (parsed.type === "tool_call") {
-                onToolCall(parsed.name, parsed.args);
-              } else if (parsed.type === "session_id") {
-                sessionId = parsed.sessionId;
-              }
+      const printCmd = provider.buildPrintCommand({
+        prompt,
+        dangerouslySkipPermissions: true,
+        resumeSession,
+      });
+      const execResult = yield* sandbox.exec(printCmd.command, {
+        onLine: (line) => {
+          resetIdleTimer();
+          for (const parsed of provider.parseStreamLine(line)) {
+            if (parsed.type === "text") {
+              onText(parsed.text);
+            } else if (parsed.type === "result") {
+              resultText = parsed.result;
+            } else if (parsed.type === "tool_call") {
+              onToolCall(parsed.name, parsed.args);
+            } else if (parsed.type === "session_id") {
+              sessionId = parsed.sessionId;
             }
-          },
-          cwd: sandboxRepoDir,
+          }
         },
-      );
+        cwd: sandboxRepoDir,
+        stdin: printCmd.stdin,
+      });
 
       if (execResult.exitCode !== 0) {
         return yield* Effect.fail(

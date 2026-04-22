@@ -1619,7 +1619,7 @@ describe("Orchestrator prompt preprocessing", () => {
     await initRepo(hostDir);
     await commitFile(hostDir, "hello.txt", "hello", "initial commit");
 
-    let capturedPrompt = "";
+    let capturedStdin = "";
 
     const { factoryLayer, sandboxRepoDir } = makeTestSandboxFactory(
       hostDir,
@@ -1629,8 +1629,8 @@ describe("Orchestrator prompt preprocessing", () => {
           exec: (command, options) => {
             if (command.startsWith("claude ") && options?.onLine) {
               const onLine = options.onLine;
-              // Capture the prompt passed to claude
-              capturedPrompt = command;
+              // Capture the prompt delivered via stdin
+              capturedStdin = options?.stdin ?? "";
               const output = "Done.";
               const streamOutput = toStreamJson(output);
               for (const line of streamOutput.split("\n")) {
@@ -1669,8 +1669,8 @@ describe("Orchestrator prompt preprocessing", () => {
     );
 
     // The prompt should have !`echo hello-from-sandbox` replaced with "hello-from-sandbox"
-    expect(capturedPrompt).toContain("hello-from-sandbox");
-    expect(capturedPrompt).not.toContain("!`echo");
+    expect(capturedStdin).toContain("hello-from-sandbox");
+    expect(capturedStdin).not.toContain("!`echo");
   });
 
   it("passes prompt through unchanged when no !`command` expressions", async () => {
@@ -1679,17 +1679,9 @@ describe("Orchestrator prompt preprocessing", () => {
     await initRepo(hostDir);
     await commitFile(hostDir, "hello.txt", "hello", "initial commit");
 
-    let capturedPrompt = "";
+    let capturedStdin = "";
 
-    const { factoryLayer, sandboxRepoDir } = makeTestSandboxFactory(
-      hostDir,
-      (dir) =>
-        makeMockAgentLayer(dir, async () => {
-          return "Done.";
-        }),
-    );
-
-    // Intercept to capture prompt — use the simpler mock that captures command
+    // Intercept to capture prompt delivered via stdin
     const { factoryLayer: fl2, sandboxRepoDir: sr2 } = makeTestSandboxFactory(
       hostDir,
       (dir) => {
@@ -1698,7 +1690,7 @@ describe("Orchestrator prompt preprocessing", () => {
           exec: (command, options) => {
             if (command.startsWith("claude ") && options?.onLine) {
               const onLine = options.onLine;
-              capturedPrompt = command;
+              capturedStdin = options?.stdin ?? "";
               const output = "Done.";
               const streamOutput = toStreamJson(output);
               for (const line of streamOutput.split("\n")) {
@@ -1735,7 +1727,7 @@ describe("Orchestrator prompt preprocessing", () => {
       }).pipe(Effect.provide(Layer.merge(fl2, testDisplayLayer))),
     );
 
-    expect(capturedPrompt).toContain("Just a plain prompt with no commands.");
+    expect(capturedStdin).toContain("Just a plain prompt with no commands.");
   });
 });
 

@@ -36,9 +36,18 @@ export const makeLocalSandboxLayer = (
         return Effect.async<ExecResult, ExecError>((resume) => {
           const proc = spawn("sh", ["-c", command], {
             cwd: options?.cwd ?? sandboxDir,
-            stdio: ["ignore", "pipe", "pipe"],
+            stdio: [
+              options?.stdin !== undefined ? "pipe" : "ignore",
+              "pipe",
+              "pipe",
+            ],
             env,
           });
+
+          if (options?.stdin !== undefined) {
+            proc.stdin!.write(options.stdin);
+            proc.stdin!.end();
+          }
 
           const stdoutChunks: string[] = [];
           const stderrChunks: string[] = [];
@@ -68,6 +77,51 @@ export const makeLocalSandboxLayer = (
             resume(
               Effect.succeed({
                 stdout: stdoutChunks.join("\n"),
+                stderr: stderrChunks.join(""),
+                exitCode: code ?? 0,
+              }),
+            );
+          });
+        });
+      }
+
+      if (options?.stdin !== undefined) {
+        return Effect.async<ExecResult, ExecError>((resume) => {
+          const proc = spawn("sh", ["-c", command], {
+            cwd: options?.cwd ?? sandboxDir,
+            stdio: ["pipe", "pipe", "pipe"],
+            env,
+          });
+
+          proc.stdin!.write(options.stdin);
+          proc.stdin!.end();
+
+          const stdoutChunks: string[] = [];
+          const stderrChunks: string[] = [];
+
+          proc.stdout!.on("data", (chunk: Buffer) => {
+            stdoutChunks.push(chunk.toString());
+          });
+
+          proc.stderr!.on("data", (chunk: Buffer) => {
+            stderrChunks.push(chunk.toString());
+          });
+
+          proc.on("error", (error) => {
+            resume(
+              Effect.fail(
+                new ExecError({
+                  command,
+                  message: `Failed to exec: ${error.message}`,
+                }),
+              ),
+            );
+          });
+
+          proc.on("close", (code) => {
+            resume(
+              Effect.succeed({
+                stdout: stdoutChunks.join(""),
                 stderr: stderrChunks.join(""),
                 exitCode: code ?? 0,
               }),

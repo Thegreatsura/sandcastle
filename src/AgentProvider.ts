@@ -78,13 +78,21 @@ export interface AgentCommandOptions {
   readonly resumeSession?: string;
 }
 
+/** Return type of buildPrintCommand — command string plus optional stdin content.
+ *  When `stdin` is set, the sandbox pipes it to the child process's stdin
+ *  instead of inlining the prompt in argv, avoiding the Linux 128 KB per-arg limit. */
+export interface PrintCommand {
+  readonly command: string;
+  readonly stdin?: string;
+}
+
 export interface AgentProvider {
   readonly name: string;
   /** Environment variables injected by this agent provider. Merged at launch time with env resolver and sandbox provider env. */
   readonly env: Record<string, string>;
   /** When true, session capture is enabled for this provider. Default: true for Claude Code, false for others. */
   readonly captureSessions: boolean;
-  buildPrintCommand(options: AgentCommandOptions): string;
+  buildPrintCommand(options: AgentCommandOptions): PrintCommand;
   buildInteractiveArgs?(options: AgentCommandOptions): string[];
   parseStreamLine(line: string): ParsedStreamEvent[];
 }
@@ -159,8 +167,11 @@ export const pi = (model: string, options?: PiOptions): AgentProvider => ({
   env: options?.env ?? {},
   captureSessions: false,
 
-  buildPrintCommand({ prompt }: AgentCommandOptions): string {
-    return `pi -p --mode json --no-session --model ${shellEscape(model)} ${shellEscape(prompt)}`;
+  buildPrintCommand({ prompt }: AgentCommandOptions): PrintCommand {
+    return {
+      command: `pi -p --mode json --no-session --model ${shellEscape(model)}`,
+      stdin: prompt,
+    };
   },
 
   buildInteractiveArgs({ prompt }: AgentCommandOptions): string[] {
@@ -227,11 +238,14 @@ export const codex = (
   env: options?.env ?? {},
   captureSessions: false,
 
-  buildPrintCommand({ prompt }: AgentCommandOptions): string {
+  buildPrintCommand({ prompt }: AgentCommandOptions): PrintCommand {
     const effortFlag = options?.effort
       ? ` -c ${shellEscape(`model_reasoning_effort="${options.effort}"`)}`
       : "";
-    return `codex exec --json --dangerously-bypass-approvals-and-sandbox -m ${shellEscape(model)}${effortFlag} ${shellEscape(prompt)}`;
+    return {
+      command: `codex exec --json --dangerously-bypass-approvals-and-sandbox -m ${shellEscape(model)}${effortFlag}`,
+      stdin: prompt,
+    };
   },
 
   buildInteractiveArgs({ prompt }: AgentCommandOptions): string[] {
@@ -263,8 +277,10 @@ export const opencode = (
   env: options?.env ?? {},
   captureSessions: false,
 
-  buildPrintCommand({ prompt }: AgentCommandOptions): string {
-    return `opencode run --model ${shellEscape(model)} ${shellEscape(prompt)}`;
+  buildPrintCommand({ prompt }: AgentCommandOptions): PrintCommand {
+    return {
+      command: `opencode run --model ${shellEscape(model)} ${shellEscape(prompt)}`,
+    };
   },
 
   buildInteractiveArgs({ prompt }: AgentCommandOptions): string[] {
@@ -302,7 +318,7 @@ export const claudeCode = (
     prompt,
     dangerouslySkipPermissions,
     resumeSession,
-  }: AgentCommandOptions): string {
+  }: AgentCommandOptions): PrintCommand {
     const skipPerms = dangerouslySkipPermissions
       ? " --dangerously-skip-permissions"
       : "";
@@ -310,7 +326,10 @@ export const claudeCode = (
     const resumeFlag = resumeSession
       ? ` --resume ${shellEscape(resumeSession)}`
       : "";
-    return `claude --print --verbose${skipPerms} --output-format stream-json --model ${shellEscape(model)}${effortFlag}${resumeFlag} -p ${shellEscape(prompt)}`;
+    return {
+      command: `claude --print --verbose${skipPerms} --output-format stream-json --model ${shellEscape(model)}${effortFlag}${resumeFlag} -p -`,
+      stdin: prompt,
+    };
   },
 
   buildInteractiveArgs({
