@@ -14,6 +14,7 @@ import {
 import {
   orchestrate,
   type IterationResult,
+  type IterationUsage,
   type OrchestrateResult,
 } from "./Orchestrator.js";
 import { resolvePrompt } from "./PromptResolver.js";
@@ -144,6 +145,31 @@ export const buildCompletionMessage = (
     severity: "warn",
   };
 };
+
+/**
+ * Format the context window size from an iteration's usage data.
+ * Returns a string like "103k" representing the total input-side tokens
+ * (inputTokens + cacheCreationInputTokens + cacheReadInputTokens)
+ * rounded up to the nearest 1000.
+ */
+export const formatContextWindowSize = (usage: IterationUsage): string => {
+  const total =
+    usage.inputTokens +
+    usage.cacheCreationInputTokens +
+    usage.cacheReadInputTokens;
+  return `${Math.ceil(total / 1000)}k`;
+};
+
+/**
+ * Build "Context window: NNNk" lines for iterations that have usage data.
+ * Returns an empty array when no iterations carry usage.
+ */
+export const buildContextWindowLines = (
+  iterations: readonly Pick<IterationResult, "usage">[],
+): string[] =>
+  iterations
+    .filter((it): it is { usage: IterationUsage } => it.usage !== undefined)
+    .map((it) => `Context window: ${formatContextWindowSize(it.usage)}`);
 
 /**
  * Controls where Sandcastle writes iteration progress and agent output.
@@ -466,6 +492,10 @@ export const run = async (options: RunOptions): Promise<RunResult> => {
       orchestrateResult.iterations.length,
     );
     yield* d.status(completion.message, completion.severity);
+
+    for (const line of buildContextWindowLines(orchestrateResult.iterations)) {
+      yield* d.text(line);
+    }
 
     return orchestrateResult;
   });
