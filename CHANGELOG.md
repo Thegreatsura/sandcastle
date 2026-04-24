@@ -1,5 +1,23 @@
 # @ai-hero/sandcastle
 
+## 0.5.4
+
+### Patch Changes
+
+- 9c8516d: Surface agent error details in `AgentError` when stderr is empty. Error events emitted to stdout by Codex and Pi, plus OpenCode's result text, are now parsed and included in the error message instead of being dropped.
+- b2cc893: Show context window size per iteration in the run summary. Each iteration with usage data emits a `Context window: NNNk` line (tokens rounded up to the nearest 1000) in both terminal and log-to-file mode.
+- 2843c1b: Support `baseBranch` when creating sandboxes, so new branches can be forked from a specified ref. Available both on `createSandbox` and in the named branch strategy.
+- d860e84: Fix Beads Dockerfile build failure on arm64 hosts (e.g. Apple Silicon). The image now builds on both amd64 and arm64.
+- fdd9b9e: Fix built-in review prompt templates so they respect the configured source branch instead of always diffing against `main`.
+- cfbeb67: Fix parallel-planner-with-review template to capture reviewer result and merge commits from both implementer and reviewer runs
+- eb03260: Fix transient worktree creation failure when `branch.autoSetupMerge` or `push.autoSetupRemote` is enabled globally
+- 4032e64: Inline prompts (`prompt: "..."`) are now passed to the agent literally — no `{{KEY}}` substitution, no `` !`command` `` expansion, no built-in `{{SOURCE_BRANCH}}` / `{{TARGET_BRANCH}}` injection. Fixes #453: callers that build inline prompts from arbitrary content (issue bodies, PR descriptions) no longer fail when that content happens to contain `{{...}}`. Passing `promptArgs` alongside an inline prompt is now an error; use `promptFile` to opt into template behavior.
+- 6bc4d74: Fix `PromptPreprocessor` executing `` !`...` `` patterns that arrive via `promptArgs` substitution. Argument values are now treated as inert data: only shell blocks written in the raw template are executed. Previously, any caller passing text through `promptArgs` (issue titles, bodies, docs excerpts, etc.) could hit spurious command execution — or, with untrusted inputs, remote shell execution — because the preprocessor scanned the fully-assembled prompt after substitution.
+- 359907e: Add `onAgentStreamEvent` option to `logging` in log-to-file mode. The callback receives each `text` chunk and `toolCall` emitted by the agent, with the iteration number and a timestamp, so callers can forward the agent's output stream to an external observability system. Errors thrown by the callback are swallowed so a broken forwarder cannot kill the run.
+- ce1bf1b: Support tilde expansion in `sandboxPath` for Docker and Podman mount configs.
+
+  Users can now write `sandboxPath: "~/.npm"` and it expands to `/home/agent/.npm` inside the sandbox. The expansion uses the provider's declared `sandboxHomedir` (`"/home/agent"` for Docker and Podman). Using `~` in `sandboxPath` with a provider that has no `sandboxHomedir` throws a descriptive error at mount resolution time.
+
 ## 0.5.3
 
 ### Patch Changes
