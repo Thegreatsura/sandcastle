@@ -20,12 +20,13 @@ import { orchestrate } from "./Orchestrator.js";
 import {
   claudeCode,
   codex as codexFactory,
+  opencode as opencodeFactory,
   pi as piFactory,
   DEFAULT_MODEL,
 } from "./AgentProvider.js";
 import { Sandbox } from "./SandboxFactory.js";
 import type { DockerError, SandboxError } from "./errors.js";
-import { AgentIdleTimeoutError } from "./errors.js";
+import { AgentError, AgentIdleTimeoutError } from "./errors.js";
 import { SandboxFactory } from "./SandboxFactory.js";
 import { encodeProjectPath } from "./SessionStore.js";
 import { defaultSessionPathsLayer, sessionPathsLayer } from "./SessionPaths.js";
@@ -1402,6 +1403,184 @@ describe("Orchestrator error handling", () => {
     );
 
     expect(exit._tag).toBe("Failure");
+  });
+
+  it("falls back to tail of stdout when stderr is empty on non-zero exit (no-op parser)", async () => {
+    const hostDir = await mkdtemp(join(tmpdir(), "orch-stderr-fallback-"));
+
+    await initRepo(hostDir);
+    await commitFile(hostDir, "hello.txt", "hello", "initial commit");
+
+    const opencodeProvider = opencodeFactory("test-model");
+    const stdoutContent = "Setting up environment...\nLoading model...\nError: API key is invalid\nPlease check your credentials";
+
+    const { factoryLayer } = makeTestSandboxFactory(
+      hostDir,
+      (dir) => {
+        const fsLayer = makeLocalSandboxLayer(dir);
+        return Layer.succeed(Sandbox, {
+          exec: (command, options) => {
+            if (command.startsWith("opencode ")) {
+              return Effect.succeed({
+                stdout: stdoutContent,
+                stderr: "",
+                exitCode: 1,
+              });
+            }
+            return Effect.flatMap(Sandbox, (real) =>
+              real.exec(command, options),
+            ).pipe(Effect.provide(fsLayer));
+          },
+          copyIn: (hostPath, sandboxPath) =>
+            Effect.flatMap(Sandbox, (real) =>
+              real.copyIn(hostPath, sandboxPath),
+            ).pipe(Effect.provide(fsLayer)),
+          copyFileOut: (sandboxPath, hostPath) =>
+            Effect.flatMap(Sandbox, (real) =>
+              real.copyFileOut(sandboxPath, hostPath),
+            ).pipe(Effect.provide(fsLayer)),
+        });
+      },
+    );
+
+    const exit = await Effect.runPromiseExit(
+      orchestrate({
+        provider: opencodeProvider,
+        hostRepoDir: hostDir,
+        iterations: 1,
+        prompt: "do some work",
+      }).pipe(Effect.provide(Layer.merge(factoryLayer, testDisplayLayer))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const err = Cause.squash(exit.cause);
+      expect(err).toBeInstanceOf(AgentError);
+      if (err instanceof AgentError) {
+        expect(err.message).toContain("opencode exited with code 1:");
+        expect(err.message).toContain("API key is invalid");
+      }
+    }
+  });
+
+  it("falls back to resultText when stderr is empty on non-zero exit (structured parser)", async () => {
+    const hostDir = await mkdtemp(join(tmpdir(), "orch-resulttext-fallback-"));
+
+    await initRepo(hostDir);
+    await commitFile(hostDir, "hello.txt", "hello", "initial commit");
+
+    // Use Claude Code provider which has a structured parser that populates resultText
+    const errorLine = JSON.stringify({
+      type: "result",
+      result: "Rate limit exceeded, please retry later",
+    });
+
+    const { factoryLayer } = makeTestSandboxFactory(
+      hostDir,
+      (dir) => {
+        const fsLayer = makeLocalSandboxLayer(dir);
+        return Layer.succeed(Sandbox, {
+          exec: (command, options) => {
+            if (command.startsWith("claude ") && options?.onLine) {
+              options.onLine(errorLine);
+              return Effect.succeed({
+                stdout: errorLine,
+                stderr: "",
+                exitCode: 1,
+              });
+            }
+            return Effect.flatMap(Sandbox, (real) =>
+              real.exec(command, options),
+            ).pipe(Effect.provide(fsLayer));
+          },
+          copyIn: (hostPath, sandboxPath) =>
+            Effect.flatMap(Sandbox, (real) =>
+              real.copyIn(hostPath, sandboxPath),
+            ).pipe(Effect.provide(fsLayer)),
+          copyFileOut: (sandboxPath, hostPath) =>
+            Effect.flatMap(Sandbox, (real) =>
+              real.copyFileOut(sandboxPath, hostPath),
+            ).pipe(Effect.provide(fsLayer)),
+        });
+      },
+    );
+
+    const exit = await Effect.runPromiseExit(
+      orchestrate({
+        provider: testProvider,
+        hostRepoDir: hostDir,
+        iterations: 1,
+        prompt: "do some work",
+      }).pipe(Effect.provide(Layer.merge(factoryLayer, testDisplayLayer))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const err = Cause.squash(exit.cause);
+      expect(err).toBeInstanceOf(AgentError);
+      if (err instanceof AgentError) {
+        expect(err.message).toContain("claude-code exited with code 1:");
+        expect(err.message).toContain("Rate limit exceeded, please retry later");
+      }
+    }
+  });
+
+  it("preserves stderr in error when stderr is non-empty", async () => {
+    const hostDir = await mkdtemp(join(tmpdir(), "orch-stderr-present-"));
+
+    await initRepo(hostDir);
+    await commitFile(hostDir, "hello.txt", "hello", "initial commit");
+
+    const opencodeProvider = opencodeFactory("test-model");
+
+    const { factoryLayer } = makeTestSandboxFactory(
+      hostDir,
+      (dir) => {
+        const fsLayer = makeLocalSandboxLayer(dir);
+        return Layer.succeed(Sandbox, {
+          exec: (command, options) => {
+            if (command.startsWith("opencode ")) {
+              return Effect.succeed({
+                stdout: "some stdout output",
+                stderr: "fatal error from stderr",
+                exitCode: 1,
+              });
+            }
+            return Effect.flatMap(Sandbox, (real) =>
+              real.exec(command, options),
+            ).pipe(Effect.provide(fsLayer));
+          },
+          copyIn: (hostPath, sandboxPath) =>
+            Effect.flatMap(Sandbox, (real) =>
+              real.copyIn(hostPath, sandboxPath),
+            ).pipe(Effect.provide(fsLayer)),
+          copyFileOut: (sandboxPath, hostPath) =>
+            Effect.flatMap(Sandbox, (real) =>
+              real.copyFileOut(sandboxPath, hostPath),
+            ).pipe(Effect.provide(fsLayer)),
+        });
+      },
+    );
+
+    const exit = await Effect.runPromiseExit(
+      orchestrate({
+        provider: opencodeProvider,
+        hostRepoDir: hostDir,
+        iterations: 1,
+        prompt: "do some work",
+      }).pipe(Effect.provide(Layer.merge(factoryLayer, testDisplayLayer))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const err = Cause.squash(exit.cause);
+      expect(err).toBeInstanceOf(AgentError);
+      if (err instanceof AgentError) {
+        expect(err.message).toContain("fatal error from stderr");
+        // Should NOT fall back to stdout when stderr is present
+        expect(err.message).not.toContain("some stdout output");
+      }
+    }
   });
 });
 

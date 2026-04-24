@@ -14,6 +14,20 @@ const TOOL_ARG_FIELDS: Record<string, string> = {
   Agent: "description",
 };
 
+/**
+ * Extract an error message from a parsed JSON error event.
+ * Handles { error: "string" }, { error: { message: "string" } }, and { message: "string" }.
+ */
+const extractErrorMessage = (obj: any): string | undefined => {
+  const err = obj.error;
+  if (typeof err === "string") return err;
+  if (typeof err === "object" && err !== null && typeof err.message === "string") {
+    return err.message;
+  }
+  if (typeof obj.message === "string") return obj.message;
+  return undefined;
+};
+
 const parseStreamJsonLine = (line: string): ParsedStreamEvent[] => {
   if (!line.startsWith("{")) return [];
   try {
@@ -138,6 +152,13 @@ const parsePiStreamLine = (line: string): ParsedStreamEvent[] => {
       if (typeof argValue !== "string") return [];
       return [{ type: "tool_call", name: toolName, args: argValue }];
     }
+    // Pi emits agent_error / error events on stdout (not stderr) for auth
+    // failures, rate limits, and API errors. Capture them as result events so
+    // the Orchestrator's stderr-empty fallback can surface them to the user.
+    if (obj.type === "agent_error" || obj.type === "error") {
+      const msg = extractErrorMessage(obj);
+      return msg ? [{ type: "result", result: msg }] : [];
+    }
     if (obj.type === "agent_end" && Array.isArray(obj.messages)) {
       const messages = obj.messages as {
         role: string;
@@ -224,6 +245,14 @@ const parseCodexStreamLine = (line: string): ParsedStreamEvent[] => {
       typeof obj.item.command === "string"
     ) {
       return [{ type: "tool_call", name: "Bash", args: obj.item.command }];
+    }
+
+    // Codex emits error events on stdout (not stderr) for auth failures,
+    // rate limits, and API errors. Capture them as result events so the
+    // Orchestrator's stderr-empty fallback can surface them to the user.
+    if (obj.type === "error") {
+      const msg = extractErrorMessage(obj);
+      return msg ? [{ type: "result", result: msg }] : [];
     }
 
     // turn.completed → skip

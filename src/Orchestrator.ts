@@ -119,9 +119,21 @@ const invokeAgent = (
       });
 
       if (execResult.exitCode !== 0) {
+        // Prefer stderr; fall back to resultText (from parsed stream events),
+        // then to the tail of raw stdout (last 20 non-empty lines).
+        let errorDetail = execResult.stderr;
+        if (!errorDetail.trim()) {
+          errorDetail = resultText;
+        }
+        if (!errorDetail.trim()) {
+          const lines = execResult.stdout
+            .split("\n")
+            .filter((l) => l.trim());
+          errorDetail = lines.slice(-20).join("\n");
+        }
         return yield* Effect.fail(
           new AgentError({
-            message: `${provider.name} exited with code ${execResult.exitCode}:\n${execResult.stderr}`,
+            message: `${provider.name} exited with code ${execResult.exitCode}:\n${errorDetail}`,
           }),
         );
       }

@@ -383,6 +383,80 @@ describe("pi factory", () => {
     );
   });
 
+  it("parseStreamLine captures agent_error event with string error as result", () => {
+    const provider = pi("claude-sonnet-4-6");
+    const line = JSON.stringify({
+      type: "agent_error",
+      error: "Authentication failed: invalid API key",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      {
+        type: "result",
+        result: "Authentication failed: invalid API key",
+      },
+    ]);
+  });
+
+  it("parseStreamLine captures agent_error event with object error as result", () => {
+    const provider = pi("claude-sonnet-4-6");
+    const line = JSON.stringify({
+      type: "agent_error",
+      error: { message: "Rate limit exceeded", code: "rate_limit" },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      {
+        type: "result",
+        result: "Rate limit exceeded",
+      },
+    ]);
+  });
+
+  it("parseStreamLine captures error event with string message as result", () => {
+    const provider = pi("claude-sonnet-4-6");
+    const line = JSON.stringify({
+      type: "error",
+      message: "Internal server error",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      {
+        type: "result",
+        result: "Internal server error",
+      },
+    ]);
+  });
+
+  it("parseStreamLine captures error event with string error field as result", () => {
+    const provider = pi("claude-sonnet-4-6");
+    const line = JSON.stringify({
+      type: "error",
+      error: "Connection refused",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      {
+        type: "result",
+        result: "Connection refused",
+      },
+    ]);
+  });
+
+  it("parseStreamLine returns empty array for agent_error with no extractable message", () => {
+    const provider = pi("claude-sonnet-4-6");
+    const line = JSON.stringify({
+      type: "agent_error",
+      // no error field
+    });
+    expect(provider.parseStreamLine(line)).toEqual([]);
+  });
+
+  it("parseStreamLine returns empty array for error event with no extractable message", () => {
+    const provider = pi("claude-sonnet-4-6");
+    const line = JSON.stringify({
+      type: "error",
+      // no message or error field
+    });
+    expect(provider.parseStreamLine(line)).toEqual([]);
+  });
+
   it("accepts an env option and exposes it on the provider", () => {
     const provider = pi("claude-sonnet-4-6", { env: { PI_KEY: "abc" } });
     expect(provider.env).toEqual({ PI_KEY: "abc" });
@@ -556,6 +630,50 @@ describe("codex factory", () => {
     expect(provider1.buildPrintCommand(opts("test")).command).not.toContain(
       "model-b",
     );
+  });
+
+  // --- error event parsing tests ---
+
+  it("parseStreamLine captures error event with nested error object as result", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "error",
+      error: { type: "server_error", message: "Internal server error" },
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "result", result: "Internal server error" },
+    ]);
+  });
+
+  it("parseStreamLine captures error event with string error as result", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "error",
+      error: "Authentication failed: invalid API key",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "result", result: "Authentication failed: invalid API key" },
+    ]);
+  });
+
+  it("parseStreamLine captures error event with top-level message as result", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "error",
+      message: "Rate limit exceeded",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([
+      { type: "result", result: "Rate limit exceeded" },
+    ]);
+  });
+
+  it("parseStreamLine returns empty array for error event with no extractable message", () => {
+    const provider = codex("gpt-5.4-mini");
+    const line = JSON.stringify({
+      type: "error",
+      code: "unknown",
+    });
+    expect(provider.parseStreamLine(line)).toEqual([]);
   });
 
   it("accepts an env option and exposes it on the provider", () => {
