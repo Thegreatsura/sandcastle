@@ -1,9 +1,4 @@
-Emit a single `<output>` block as the last thing in your response.
-
-Do not change files.
-Do not run commands.
-Do not spawn subagents.
-Do not include text outside the `<output>` block.
+Your whole reply is one `<output>` block, written straight from the exploration you have already done:
 
 ```json
 <output>
@@ -13,7 +8,7 @@ Do not include text outside the `<output>` block.
       "number": 101,
       "tag": "easy-call | needs-a-human | blocked",
       "duplicate_of": null,
-      "comment": "The full markdown comment for a surviving issue, following the COMMENT guidance: verdict + one-liner, blast radius, one-way/two-way door, optional small diagram, findings, closed duplicates and what they added, open questions."
+      "comment": "The survivor's full markdown comment, per step 5. COMMENT."
     },
     {
       "number": 117,
@@ -27,8 +22,8 @@ Do not include text outside the `<output>` block.
 </output>
 ```
 
-Rules the workflow enforces -- the whole plan is rejected if any fails:
+The workflow rejects the whole plan unless:
 
 - Every issue in the batch appears exactly once. `number` and `duplicate_of` are integers (or `duplicate_of` is `null`).
-- `duplicate_of` names another issue in the batch which is not itself a duplicate.
-- `tag` is one of `easy-call`, `needs-a-human`, `blocked`. `comment` is non-empty.
+- `duplicate_of` names another batch issue that is itself a survivor.
+- `tag` is one of the three above; `comment` is non-empty.
