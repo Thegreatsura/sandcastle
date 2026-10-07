@@ -23,26 +23,6 @@ export interface BatchIssue {
   }[];
 }
 
-export interface Group {
-  readonly issues: readonly number[];
-  readonly hypothesis: string;
-}
-
-export interface GroupFinding {
-  readonly number: number;
-  readonly belongs: boolean;
-  readonly belongs_reason: string;
-  readonly tag: Tag;
-  readonly shape: string;
-  readonly one_liner: string;
-  readonly comment: string;
-}
-
-export interface GroupReport {
-  readonly findings: readonly GroupFinding[];
-  readonly notes: string;
-}
-
 export interface PlanEntry {
   readonly number: number;
   readonly tag: Tag;
@@ -180,70 +160,6 @@ export const renderIssues = (issues: readonly BatchIssue[]): string =>
 // ---------------------------------------------------------------------------
 // Agent output schemas
 // ---------------------------------------------------------------------------
-
-/** Grouping pass: a partition of the batch into likely-shared-root-cause groups. */
-export const groupingSchema = (batch: readonly BatchIssue[]) => {
-  const numbers = new Set(batch.map((issue) => issue.number));
-  return standardSchema<{ groups: Group[] }>((value) => {
-    const record = asRecord(value, "grouping output");
-    const groups = asArray(record.groups, "groups").map((g, i): Group => {
-      const group = asRecord(g, `groups[${i}]`);
-      const issues = asArray(group.issues, `groups[${i}].issues`).map((n) =>
-        asIssueNumber(n, `groups[${i}].issues[]`),
-      );
-      if (issues.length === 0) {
-        throw new Error(`groups[${i}].issues must not be empty`);
-      }
-      return {
-        issues: [...issues].sort((a, b) => a - b),
-        hypothesis: asString(group.hypothesis, `groups[${i}].hypothesis`),
-      };
-    });
-    assertCoversBatch(
-      groups.flatMap((group) => group.issues),
-      numbers,
-      "groups",
-    );
-    return { groups };
-  });
-};
-
-/** Per-group exploration: one finding per issue in the group. */
-export const groupReportSchema = (group: Group) => {
-  const numbers = new Set(group.issues);
-  return standardSchema<GroupReport>((value) => {
-    const record = asRecord(value, "group output");
-    const findings = asArray(record.findings, "findings").map(
-      (f, i): GroupFinding => {
-        const finding = asRecord(f, `findings[${i}]`);
-        if (typeof finding.belongs !== "boolean") {
-          throw new Error(`findings[${i}].belongs must be a boolean`);
-        }
-        return {
-          number: asIssueNumber(finding.number, `findings[${i}].number`),
-          belongs: finding.belongs,
-          belongs_reason: asString(
-            finding.belongs_reason,
-            `findings[${i}].belongs_reason`,
-          ),
-          tag: asTag(finding.tag, `findings[${i}].tag`),
-          shape: asOneLine(finding.shape, `findings[${i}].shape`),
-          one_liner: asOneLine(finding.one_liner, `findings[${i}].one_liner`),
-          comment: asString(finding.comment, `findings[${i}].comment`),
-        };
-      },
-    );
-    assertCoversBatch(
-      findings.map((finding) => finding.number),
-      numbers,
-      "findings",
-    );
-    return {
-      findings,
-      notes: typeof record.notes === "string" ? record.notes : "",
-    };
-  });
-};
 
 /**
  * The final plan, validated as a whole against the batch. This is both the
