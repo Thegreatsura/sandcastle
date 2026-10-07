@@ -26,9 +26,8 @@ export interface BatchIssue {
 export interface PlanEntry {
   readonly number: number;
   readonly tag: Tag;
-  readonly shape: string;
-  readonly one_liner: string;
   readonly duplicate_of: number | null;
+  /** Free-form markdown, posted as-is plus a one-line footer. */
   readonly comment: string;
 }
 
@@ -72,14 +71,6 @@ const asTag = (value: unknown, label: string): Tag => {
     throw new Error(`${label} must be one of ${TAGS.join(" | ")}`);
   }
   return value as Tag;
-};
-
-const asOneLine = (value: unknown, label: string): string => {
-  const text = asString(value, label).trim();
-  if (text.includes("\n")) {
-    throw new Error(`${label} must be a single line`);
-  }
-  return text;
 };
 
 /** Throws unless `numbers` contains every batch issue exactly once and nothing else. */
@@ -167,8 +158,7 @@ export const renderIssues = (issues: readonly BatchIssue[]): string =>
  * `apply.ts` re-runs before touching GitHub.
  *
  * Rules: every batch issue exactly once; `duplicate_of` points at another
- * batch issue that is older (lower number) and is not itself a duplicate — so
- * every duplicate group collapses onto its oldest issue, with no chains.
+ * batch issue that is not itself a duplicate, so there are no chains.
  */
 export const planSchema = (batch: readonly BatchIssue[]) => {
   const numbers = new Set(batch.map((issue) => issue.number));
@@ -180,8 +170,6 @@ export const planSchema = (batch: readonly BatchIssue[]) => {
       return {
         number: asIssueNumber(entry.number, `issues[${i}].number`),
         tag: asTag(entry.tag, `issues[${i}].tag`),
-        shape: asOneLine(entry.shape, `issues[${i}].shape`),
-        one_liner: asOneLine(entry.one_liner, `issues[${i}].one_liner`),
         duplicate_of:
           duplicateOf === null
             ? null
@@ -211,11 +199,6 @@ export const planSchema = (batch: readonly BatchIssue[]) => {
       if (targetEntry.duplicate_of !== null) {
         throw new Error(
           `${label}: target is itself a duplicate of #${targetEntry.duplicate_of} — point straight at the oldest issue, no chains`,
-        );
-      }
-      if (target > entry.number) {
-        throw new Error(
-          `${label}: target must be the oldest issue in its group, but #${target} is newer`,
         );
       }
     }
@@ -252,31 +235,13 @@ const NEXT_STEP: Record<Tag, string> = {
   blocked: "Labelled `agent:blocked` — blocked on something outside the repo.",
 };
 
-/** Render the comment posted on an issue that survives (is not a duplicate). */
-export const renderSurvivorComment = (
-  entry: PlanEntry,
-  duplicates: readonly number[],
-): string => {
-  const lines = [
-    `**Explore verdict:** \`${entry.tag}\` · **Shape:** ${entry.shape}`,
-    "",
-    `> ${entry.one_liner}`,
-    "",
-    entry.comment.trim(),
-  ];
-  if (duplicates.length > 0) {
-    lines.push(
-      "",
-      `**Closed as duplicates of this issue:** ${duplicates.map((n) => `#${n}`).join(", ")}`,
-    );
-  }
-  lines.push("", `_${NEXT_STEP[entry.tag]}_`);
-  return lines.join("\n");
-};
-
-/** Render the comment posted on an issue being closed as a duplicate. */
-export const renderDuplicateComment = (entry: PlanEntry): string =>
-  `Closed as duplicate of #${entry.duplicate_of}.\n\n${entry.comment.trim()}`;
+/** The agent's comment as-is, plus a one-line footer saying what happens next. */
+export const renderComment = (entry: PlanEntry): string =>
+  `${entry.comment.trim()}\n\n_${
+    entry.duplicate_of === null
+      ? NEXT_STEP[entry.tag]
+      : `Closed as duplicate of #${entry.duplicate_of}.`
+  }_`;
 
 /**
  * Turn a validated plan into the ordered list of GitHub effects: survivors
@@ -292,15 +257,8 @@ export const planEffects = (plan: Plan): GitHubEffect[] => {
 
   const effects: GitHubEffect[] = [];
   for (const entry of survivors) {
-    const dupes = duplicates
-      .filter((dupe) => dupe.duplicate_of === entry.number)
-      .map((dupe) => dupe.number);
     effects.push(
-      {
-        kind: "comment",
-        issue: entry.number,
-        body: renderSurvivorComment(entry, dupes),
-      },
+      { kind: "comment", issue: entry.number, body: renderComment(entry) },
       {
         kind: "swap-label",
         issue: entry.number,
@@ -310,11 +268,7 @@ export const planEffects = (plan: Plan): GitHubEffect[] => {
   }
   for (const entry of duplicates) {
     effects.push(
-      {
-        kind: "comment",
-        issue: entry.number,
-        body: renderDuplicateComment(entry),
-      },
+      { kind: "comment", issue: entry.number, body: renderComment(entry) },
       {
         kind: "close-duplicate",
         issue: entry.number,

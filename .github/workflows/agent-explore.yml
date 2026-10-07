@@ -159,3 +159,11 @@ jobs:
           OUTPUT_DIR: ${{ runner.temp }}
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: npx tsx .sandcastle/agent-workflows/explore/apply.ts
+
+      # The run summary isn't readable through the API; this artifact is.
+      - name: Upload dry-run effects
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        uses: actions/upload-artifact@v4
+        with:
+          name: explore-dry-run
+          path: ${{ runner.temp }}/effects.json
