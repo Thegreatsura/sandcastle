@@ -788,9 +788,10 @@ Creates the following files:
 ```
 .sandcastle/
 ├── Dockerfile      # Sandbox environment (customize as needed)
+├── main.mts        # Agent entry point (main.ts in an ESM package)
 ├── prompt.md       # Agent instructions
 ├── .env.example    # Token placeholders
-└── .gitignore      # Ignores .env, logs/
+└── .gitignore      # Ignores .env, logs/, worktrees/
 ```
 
 Errors if `.sandcastle/` already exists to prevent overwriting customizations.
