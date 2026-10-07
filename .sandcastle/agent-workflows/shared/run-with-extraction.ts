@@ -44,6 +44,8 @@ export async function runWithExtraction<T>(
     name: produceOptions.name ? `${produceOptions.name} (extract)` : undefined,
     promptFile: undefined,
     prompt: extractionPrompt,
+    // Extraction ends with the output tag, not `<promise>COMPLETE</promise>`.
+    completionSignal: `</${output.tag}>`,
     resumeSession: sessionId,
     output: { ...output, maxRetries },
   });

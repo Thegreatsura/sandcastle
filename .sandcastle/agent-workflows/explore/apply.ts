@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import { fail, gh, required } from "../shared/common";
+import { fail, gh, required, writeJson } from "../shared/common";
 import {
   EXPLORE_LABEL,
   parseBatch,
@@ -58,8 +58,6 @@ const outcome = (entry: Plan["issues"][number]): string =>
     : entry.tag === "easy-call"
       ? "`agent:explore` → `agent:implement`"
       : "`agent:explore` → `agent:blocked`";
-
-const cell = (text: string) => text.replaceAll("|", "\\|");
 
 const describe = (effect: GitHubEffect): string => {
   switch (effect.kind) {
@@ -178,13 +176,13 @@ summary(
   [
     `## Batch explore${DRY_RUN ? " (dry run — nothing changed)" : ""}`,
     "",
-    "| Issue | Tag | Shape | Outcome | One-liner |",
-    "| --- | --- | --- | --- | --- |",
+    "| Issue | Tag | Outcome |",
+    "| --- | --- | --- |",
     ...[...plan.issues]
       .sort((a, b) => a.number - b.number)
       .map(
         (entry) =>
-          `| #${entry.number} | \`${entry.tag}\` | ${cell(entry.shape)} | ${outcome(entry)} | ${cell(entry.one_liner)} |`,
+          `| #${entry.number} | \`${entry.tag}\` | ${outcome(entry)} |`,
       ),
     ...(plan.patterns.trim()
       ? ["", "### Cross-group patterns", "", plan.patterns.trim()]
@@ -212,6 +210,7 @@ if (DRY_RUN) {
       ),
     ].join("\n"),
   );
+  writeJson("effects.json", effects);
   console.log(
     `Dry run: ${effects.length} planned effect(s) written to summary.`,
   );

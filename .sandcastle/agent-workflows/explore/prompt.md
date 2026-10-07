@@ -57,8 +57,8 @@ Decide, for each issue, whether it truly belongs in its group -- the same bug, t
 
 - **Close duplicates aggressively.** Among the issues that do belong together, every issue that is the same bug, root cause, or request as an older one is a duplicate. Point it at the OLDEST issue (lowest number) via `duplicate_of`. The oldest issue survives with `duplicate_of: null`. Never chain duplicates, and never mark the oldest issue as a duplicate. Issues that are related but would need separate changes are NOT duplicates -- keep both.
 - **Look across groups.** If two issues in different groups turn out to be duplicates, apply the same rule. Note any wider pattern (several issues touching one fragile module, a recurring misunderstanding of the docs) for the maintainer.
-- **The surviving issue's comment** carries its findings, and folds in any unique detail only its duplicates had -- extra repro steps, edge cases, environments, proposed approaches -- crediting the duplicate by number. Do not list the closed duplicates yourself; the workflow appends that list.
-- **Each duplicate's comment** is ONE line: the reason it is the same as the issue it duplicates. The workflow prefixes it with "Closed as duplicate of #N."
+- **The surviving issue's comment** lists the duplicates closed onto it, and folds in any unique detail only they had -- extra repro steps, edge cases, environments, proposed approaches -- crediting each by number.
+- **Each duplicate's comment** is ONE line: the reason it is the same as the issue it duplicates. The workflow adds "Closed as duplicate of #N." below it.
 
 # 5. VERDICT
 
@@ -68,7 +68,17 @@ Give each issue one tag:
 - `needs-a-human` -- a design, product, or priority decision is needed first, or the issue's claims don't hold up.
 - `blocked` -- it cannot move until something outside this repo changes, or the reporter supplies missing information.
 
-A duplicate takes the same tag as the issue it duplicates.
+A duplicate takes the same tag as the issue it duplicates. A one-way door (below) should not be `easy-call`.
+
+# 6. COMMENT
+
+Each surviving issue's `comment` is free-form markdown, posted as-is with a one-line footer saying what happens next. Keep it short -- skimmable in under a minute:
+
+- Start with the verdict tag and a one-line summary.
+- Say the blast radius in prose: what the change would touch (files, modules, public API, schema) and how big it is.
+- Call it a one-way door (hard to walk back: public API, defaults users build on, removals, persisted formats) or a two-way door (cheap to revert), with a reason.
+- When it helps, include one small Markdown diagram of the change -- Mermaid, a file or call tree, a `diff` sketch, or pseudocode. Never HTML. Skip it if nothing fits.
+- Then the findings worth keeping (claims checked against the code, relevant files, possible approach), the closed duplicates and what they added, and finish with open questions.
 
 # RULES
 
