@@ -39,7 +39,7 @@ npm install --save-dev @ai-hero/sandcastle
 npx @ai-hero/sandcastle init
 ```
 
-3. Edit `.sandcastle/.env` and fill in your default values for `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your host to get one). To use an Anthropic API key instead, uncomment and fill in `ANTHROPIC_API_KEY`.
+3. Copy `.sandcastle/.env.example` to `.sandcastle/.env`, then fill in your default values for `CLAUDE_CODE_OAUTH_TOKEN` (run `claude setup-token` on your host to get one). To use an Anthropic API key instead, uncomment and fill in `ANTHROPIC_API_KEY`.
 
 ```bash
 cp .sandcastle/.env.example .sandcastle/.env
@@ -52,7 +52,7 @@ npx tsx .sandcastle/main.ts
 ```
 
 ```typescript
-// 3. Run the agent via the JS API
+// 4. Run the agent via the JS API
 import { run, claudeCode } from "@ai-hero/sandcastle";
 import { docker } from "@ai-hero/sandcastle/sandboxes/docker";
 
