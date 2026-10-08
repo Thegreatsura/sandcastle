@@ -7,6 +7,7 @@ import {
   planEffects,
   planSchema,
   validate,
+  VERDICT_LABEL,
   type GitHubEffect,
   type Plan,
 } from "./batch";
@@ -55,9 +56,7 @@ const ghWith = (args: string[], options: { token?: string; input?: string }) =>
 const outcome = (entry: Plan["issues"][number]): string =>
   entry.duplicate_of !== null
     ? `closed as duplicate of #${entry.duplicate_of}`
-    : entry.tag === "easy-call"
-      ? "`agent:explore` → `agent:implement`"
-      : "`agent:explore` → `agent:blocked`";
+    : `\`${EXPLORE_LABEL}\` → \`${VERDICT_LABEL[entry.tag]}\``;
 
 const describe = (effect: GitHubEffect): string => {
   switch (effect.kind) {

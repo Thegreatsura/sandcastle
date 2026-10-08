@@ -10,6 +10,14 @@ import { asArray, asRecord, asString, standardSchema } from "../shared/common";
 export const TAGS = ["easy-call", "needs-a-human", "blocked"] as const;
 export type Tag = (typeof TAGS)[number];
 
+/** The label each verdict hands a surviving issue on to. */
+export const VERDICT_LABEL = {
+  "easy-call": "agent:implement",
+  "needs-a-human": "ready-for-human",
+  blocked: "agent:blocked",
+} as const satisfies Record<Tag, string>;
+export type VerdictLabel = (typeof VERDICT_LABEL)[Tag];
+
 export interface BatchIssue {
   readonly number: number;
   readonly title: string;
@@ -45,7 +53,7 @@ export type GitHubEffect =
   | {
       readonly kind: "swap-label";
       readonly issue: number;
-      readonly to: "agent:implement" | "agent:blocked";
+      readonly to: VerdictLabel;
     }
   | {
       readonly kind: "close-duplicate";
@@ -230,9 +238,9 @@ export const validate = <T>(
 // ---------------------------------------------------------------------------
 
 const NEXT_STEP: Record<Tag, string> = {
-  "easy-call": "Handing off to `agent:implement`.",
-  "needs-a-human": "Labelled `agent:blocked` — needs a human decision.",
-  blocked: "Labelled `agent:blocked` — blocked on something outside the repo.",
+  "easy-call": `Handing off to \`${VERDICT_LABEL["easy-call"]}\`.`,
+  "needs-a-human": `Labelled \`${VERDICT_LABEL["needs-a-human"]}\` — needs a human decision.`,
+  blocked: `Labelled \`${VERDICT_LABEL.blocked}\` — blocked on something outside the repo.`,
 };
 
 /** The agent's comment as-is, plus a one-line footer saying what happens next. */
@@ -262,7 +270,7 @@ export const planEffects = (plan: Plan): GitHubEffect[] => {
       {
         kind: "swap-label",
         issue: entry.number,
-        to: entry.tag === "easy-call" ? "agent:implement" : "agent:blocked",
+        to: VERDICT_LABEL[entry.tag],
       },
     );
   }
